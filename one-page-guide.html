@@ -1,0 +1,2743 @@
+---
+layout: documentation
+group: documentation
+sub-group: test
+heading: test
+---
+
+<h2>2: Introduction
+</h2> 
+<h2>2.1: Ebean
+</h2> 
+<p>Ebean is an open source Object Relational Mapping tool.
+</p> 
+<p>It's goal is to provide a simpler alternative to JPA (Java Persistence API) implementations such as Hibernate and Eclipselink.
+</p> 
+<p>It does this by providing a "sessionless" API and a simpler query language.
+</p> 
+<p>That means: 
+</p> 
+<ul><li>No Session Object (or UnitOfWork or EntityManager)</li>
+<li>No Attached or Detached Beans</li>
+<li>No merge(), persist(),  flush(), or clear().  Instead Ebean has save() and delete()</li>
+</ul> 
+<p>I have found (so far) that this is a bit hard for many people familiar with JPA / Hibernate / Eclipselink etc to get their head around. The short answer is that Ebean, just like JPA has a Persistence Context but has some architectural differences to allow it to have a different approach to the entity bean lifecycle and removing the need to manage EntityManagers.
+</p> 
+<h2>2.2: Why Ebean? ... why different from JPA?
+</h2> 
+<p>Ebean uses the JPA Mapping annotations and will follow those very closely.
+</p> 
+<p>However, Ebean has been architected and built from a different perspective than JPA. The Architectural and Query language differences are reasonably fundamental to both Ebean and JPA so its hard to see these differences going away anytime soon.
+</p> 
+<p>It becomes a question of whether this different approach taken by Ebean has technical merit and has made Ebean an easier ORM to understand and use. 
+</p> 
+<h2>2.2.1:  Architecture: Session / UnitOfWork / EntityManager 
+</h2> 
+<p>JPA is architected to use an "EntityManager" which closely matches a Hibernate "Session" and a Toplink "UnitOfWork". This brings with it the concepts that an entity bean can be attached or detached from the EntityManager (with associated merge, flush clear operations etc). If the EntityManager is used across multiple Transactions the EntityManager needs to be managed typically by a EJB Session Bean, Seam, Spring or similar container/framework.
+</p> 
+<p>Ebean is architected to not require an EntityManager (or Session or UnitOfWork object) with the goal of making it easier to use and to remove the requirement to manage 
+</p> 
+<p>
+</p> 
+<p>EntityManager objects (Aka a different approach to Lifecycle management).
+</p> 
+<p>Although Ebean doesn't have a EntityManager it <i><b>DOES</b></i> have a "Persistence Context" (like JPA) and by default in Ebean the persistence context is transaction scoped and automatically managed.
+</p> 
+<p>In my opinion this makes Ebean easier to understand and use.
+</p> 
+<h2>2.2.2:  Query Language
+</h2> 
+<p>JPA has defined a powerful query language. The issue with the query language is that I believe it will be difficult to evolve the language to support "Partial Objects" and generics (returning typed Lists/Sets etc) and this is due to specific issues with the JPQL select clause as it is currently defined.
+</p> 
+<p>Ebean has a simplier query language that I believe is more orientated to object graph construction. It has enabled Ebean to easily support "Partial Object" queries and return typed Lists Sets and Maps using generics.
+</p> 
+<p>It is my understanding the JPA expert group had discussed adding 'fetch groups' (which would be similar to Ebean's partial objects) to the JPA specification quite some time ago and decided not to. That is, they don't percieve the performance benefits to be worth the complexity. The Ebean expert group has a different opinion.
+</p> 
+<p>For Ebean "Partial Objects" are seen as an important feature from a performance stand point (fetch less from the database in a simple flexible manor) and from a design perspective (no need to change the design for "wide" objects and fol ow fixed designs based on "secondary" table properties and fixed annotations for eager or lazy loading) so there looks like a difference in opinion in this respect between JPA and Ebean.
+</p> 
+<p>In time it will be interesting to see how and if JPQL evolves and especially if there are moves for it to support "partial object" queries (possibly by introducing "fetch groups" into the JPA spec).
+</p> 
+<h2>2.2.3:  Why "Partial Objects" can greatly effect performance
+</h2> 
+<p>So, given JPA may not have "Partial Object" support in the query language for some time I'll just outline the reasons it is considered important for Ebean. They are pretty obvious except for what I describe as <i><b>"Index evaluation (database not having to read data blocks)".</b></i>
+</p> 
+<b>Per Use Case
+</b> 
+<p>Having "partial object" support in the query language means you can write a query that is optimal for each use case.  If you have fixed annotations to specify whether a property is lazy or eager loaded then you can not have optimal queries for a specific use cases (you will often end up with suboptimal queries).
+</p> 
+<p>
+</p> 
+<b>Clobs / Blobs
+</b> 
+<p>Clobs and Blobs are especially expensive and the ability to include/exclude clob/blob properties per use case/query can be significant in terms of performance.
+</p> 
+<b>Wide tables/entities – network cost
+</b> 
+<p>The wider you entities get the more cost is involved in fetching Gnd <b>ሀ</b>eading properties that a use case may never use. Some people have gone to various lengths to handle this issue such as having multiple representations of the same bean (to vertical y partition a wide entity). With "partial objects" you don't have to change your design if you hit a performance 'pain point'.
+</p> 
+<p>This cost is not only in terms of the database reading columns that are not required but in the extra network traffic involved in retrieving this data that is never used by that part of the application.
+</p> 
+<b>Index evaluation (database not having to read data blocks)
+</b> 
+<p>Something special happens when your SQL query only includes columns that are included in indexes. When this occurs the database can completely evaluate the query from the data held in the indexes and <i><b>NOT</b></i> have to read data blocks (obviously a generalisation on RDBMS internals but it's a good generalisation). 
+</p> 
+{% highlight java %}// database doesn't have to read the data blocks
+// if "id" and "name" are in index(s)
+select c.id, c.name
+from customer c
+where c.name like 'Rob%'
+{% endhighlight %} 
+<p>
+</p> 
+<p>If both the "id" and "name" columns are in indexes then the database could evaluate this query without having to read the data blocks. Compared to "Data blocks" "Index blocks" are more likely to be held in memory and smaler. 
+</p> 
+<p>BUT once you include a column that is not in an index then this doesn't hold – so surely this is not that useful. 
+</p> 
+<p>True, except something similar also occurs for joins where you only use columns on the joined table that are in an index(s).
+</p> 
+<p>For example, joining order_details to the products table and only using the product.name.
+</p> 
+{% highlight java %}// database doesn't have to read 'product' table data blocks
+select o.*, d.*, p.name
+from order o
+join order_details d on d.order_id = o.id
+join product p on p.id = d.product_id
+where o.id = 27
+{% endhighlight %} 
+<p>So the part of the query evaluation relating to joining products can be performed by only reading the index – the data blocks for the product table do <i><b>NOT</b></i> have to be read.
+</p> 
+{% highlight java %}// the equivalent Ebean query
+find order (*)
+fetch details (*)
+fetch details.product (name)
+where id = 27
+{% endhighlight %} 
+<p>Now instead you may find more complex queries with many joins and you may be able to get this optimisation on a several of those joins. For example, add a join to customer to the example above just fetching the customer's name – now you get the optimisation on the join to product and on the join to customer. 
+</p> 
+<p>You may find this optimisation occuring a lot more than you think – for some queries that need to be faster you may even look to add an index (probably a compound index) to target this optimisation specifically (to support a autocompletion UI control for example).
+</p> 
+<p>Overal , what this means is that "partial object" queries can result in either al  or part of the query being evaluated by the database via data held in indexes without the database needing to read data blocks. For large databases this can be a very significant performance optimization. If you need this Ebean has made it very easy without requiring a change to your design (either ORM or Database design).
+</p> 
+<p>To be fair most of the major ORM's provide similar functionality via "Fetch Groups". It is not JPA standard yet (and IMO not as elegant as "partial objects") but is probably worth investigating if you are using one of those products.
+</p> 
+<p>Currently as I see it, the differences between Ebean's "partial objects" and "Fetch Groups" is that "Fetch Groups" seem to have limitations such as being read only (can't modify and save), and don't allow further lazy loading. Ebean's "partial objects" are really easy to use and can be treated just like other entity beans with lazy loading and support for being saved.
+</p> 
+<h2>2.2.4:  All the missing bits
+</h2> 
+<p>JPA is a developing specification but in my opinion it leaves a lot of very useful features out. This includes partial objects, batching control, support for large queries (row level persistence context), background fetching, caching control, transaction isolation.
+</p> 
+<p>
+</p> 
+<p>It also has "interesting" support for using raw SQL – in my opinion Ebean makes using raw SQL much easier. In my experience there are some tasks that are more natural y done in a Relational way. 
+</p> 
+<p>Obviously JPA will evolve and may look to support some of these features in the future. In the meantime, if you are using JPA do not be surprised if you need to use vendor specific features.
+</p> 
+<h2>2.3: Ibatis 
+</h2> 
+<p>ORM is neat but at the same time we should remember that there are times when it is easier/better/faster to have direct control over the SQL. Ibatis is such a tool and very popular with this in mind.
+</p> 
+<p>Part of Ebean's goal is to make using your own SQL easy (easier than Ibatis is the goal for Ebean). The @SqlSelect feature goes a long way to doing this along with SqlUpdate and Cal ableSql objects.
+</p> 
+<p>
+</p> 
+<h2>3: Ebean and EbeanServer
+</h2> 
+<p>Ebean and EbeanServer are the objects that provide the main API to find and save entities etc. It is worth quickly explaining what they are and how they relate.
+</p> 
+<p><i><b>EbeanServer</b></i>
+</p> 
+<ul><li>This provides the main API</li>
+<li>There is one EbeanServer per DataSource</li>
+<li>One of the EbeanServer's can be nominated as the "Default" EbeanServer</li>
+<li>A EbeanServer can be 'registered' with the Ebean singleton when it is created. This means it can later be accessed via: </li>
+</ul> 
+<p>EbeanServer s = Ebean.getServer(serverName);
+</p> 
+<p><i><b>Ebean (singleton)</b></i>
+</p> 
+<ul><li>Is a Singleton</li>
+<li>Holds a map of EbeanServer's</li>
+<li>Provides methods that proxy through to the "Default" EbeanServer. This is convienient for applications that use a single DataSource.</li>
+<li>i.e. Ebean.find(Person.class, 7); actual y cal s the find method on the "Default" EbeanServer....  Ebean.getServer(null).find(Person.class, 7);</li>
+</ul> 
+<p>Most of the examples in this document will use Ebean (the singleton) rather than EbeanServer. 
+</p> 
+{% highlight java %}// Using Ebean (singleton)... 
+Customer customer = Ebean.find(Customer.class, 4);
+// Is equivalent to...
+EbeanServer defaultServer = Ebean.getServer(null);
+Customer customer = defaultServer.find(Customer.class, 4);
+{% endhighlight %} 
+<p>
+</p> 
+<h2>4: Features Overview
+</h2> 
+<h2>4.1.1:  Mapping
+</h2> 
+<p>Ebean uses the same mapping as per the JPA specification. So you annotate your beans with @Entity, @Table, @Column, @OneToMany etc as per the JPA specification.
+</p> 
+<p>The Mapping is covered in detail in section 
+</p> 
+<h2>4.1.2:  Query
+</h2> 
+<p>Some query examples
+</p> 
+{% highlight java %}// find a customer by their id
+Customer customer = Ebean.find(Customer.class, 4);
+// find a list...
+List&lt;Customer&gt; customers = 
+Ebean.find(Customer.class)
+.where().like("name", "Rob%")
+.orderBy("name desc")
+.findList();
+{% endhighlight %} 
+<p>You can optionally use select() and fetch() to specify only the properties you want to fetch. This returns "partially" populated beans. This is an important feature to help with the performance of your queries. 
+</p> 
+{% highlight java %}// with select() and fetch() you can specify
+// only the properties you want to fetch.
+// ... returning "Partially" populated objects
+List&lt;Order&gt; orders =
+Ebean.find(Order.class)
+.select("status, shipDate, orderDate")
+.fetch("customer", "name")
+.where()
+.eq("status", Status.ACTIVE)
+.like("customer.name", "Rob%")
+.orderBy("customer.name desc");
+.findList();
+{% endhighlight %} 
+<p>A query using the query language
+</p> 
+<p>
+</p> 
+{% highlight java %}String q = "find order fetch customer fetch details where id=:id";
+Order order = Ebean.createQuery(Order.class,q) 
+.setParameter("id", 1)
+.findUnique();
+{% endhighlight %} 
+<p>The previous examples used a "fluid" API style where the methods are all chained together. You can equaly choose a more traditional style, where you create a query <i>via Ebean.createQuery() or Ebean.find(Class beanType), and then</i> set various query properties and finally using <i>query.findUnique() query.findList() query.findSet() </i>or <i>query.findMap()</i> to return the result.
+</p> 
+{% highlight java %}String q = "find order fetch customer fetch details where id=:id";
+// using non-fluid style...
+Query&lt;Order&gt; query = Ebean.createQuery(Order.class,q);
+query.setParameter("id", 1);
+Order order = query.findUnique();
+// using non-fluid style...
+Query&lt;Order&gt; query = Ebean.createQuery(Order.class);
+query.select("status, shipDate, orderDate");
+query.fetch("customer", "name");
+query.where().eq("status", Status.ACTIVE)
+.like("customer.name", "Rob%");
+query.orderBy("customer.name desc");
+List&lt;Order&gt; orders = query.findList();
+{% endhighlight %} 
+<p><hr />
+</p> 
+<h2>4.1.3:  RawSql
+</h2> 
+<p>You can explicitly specify the sql to use to build object graphs. This is useful for "Reporting" type requirements where you want to use aggregate functions such as sum() count() max() etc. 
+</p> 
+<p>It is also useful if you need to use Database specific SQL for whatever reason.
+</p> 
+<p>
+</p> 
+{% highlight java %}/**
+ * An example of an Aggregate object.
+ * 
+ * Note the @Sql indicates to Ebean that this bean
+ * is not based on a table but instead uses RawSql.
+ * 
+ */
+@Entity
+@Sql
+public class OrderAggregate {
+    @OneToOne    Order order;
+    Double totalAmount;
+    Double totalItems;
+  //getters setters etc
+{% endhighlight %} 
+<p>RawSql Example 1:
+</p> 
+{% highlight java %}String sql 
+= " select order_id, o.status, c.id, c.name,
+               sum(d.order_qty*d.unit_price) as totalAmount"
++ " from o_order o"
++ " join o_customer c on c.id = o.kcustomer_id"
++ " join o_order_detail d on d.order_id = o.id "
++ " group by order_id, o.status ";
+RawSql rawSql = 
+RawSqlBuilder
+      .parse(sql)
+  // map result columns to bean properties
+      .columnMapping("order_id",  "order.id")
+      .columnMapping("o.status",  "order.status")
+      .columnMapping("c.id",      "order.customer.id")
+      .columnMapping("c.name",    "order.customer.name")
+      .create();
+Query&lt;OrderAggregate&gt; query = Ebean.find(OrderAggregate.class);
+query.setRawSql(rawSql)        
+    // with "parsed" SQL we can add expressions to the
+// where and having clauses etc
+    .where().gt("order.id", 0)
+    .having().gt("totalAmount", 20);
+{% endhighlight %} 
+<p>Note that you can put RawSql into a ebean-orm.xml with a name and then use a RawSql query just as you would a named query.
+</p> 
+<p>Example 2:
+</p> 
+{% highlight java %}// This example has uses fetch() to fetch related order
+// and customer information after the initial RawSql
+// query is executed
+String sql 
+= " select order_id, 'ignoreMe', 
+               sum(d.order_qty*d.unit_price) as totalAmount "
+    + " from o_order_detail d" 
+    + " group by order_id ";
+RawSql rawSql = 
+  RawSqlBuilder
+    .parse(sql)
+    .columnMapping("order_id",  "order.id")
+    .columnMappingIgnore("'ignoreMe'")
+    // don't need this when using column alias
+    //.columnMapping("sum(d.order_qty*d.unit_price)","totalAmount")
+    .create();
+        
+Query&lt;OrderAggregate&gt; query = Ebean.find(OrderAggregate.class);
+query.setRawSql(rawSql)
+    // after the RawSql query executes Ebean can execute
+// FetchConfig().query() joins ...    
+.fetch("order", "status,orderDate",new FetchConfig().query())
+    .fetch("order.customer", "name")
+    .where().gt("order.id", 0)
+    .having().gt("totalAmount", 20)
+    .order().desc("totalAmount")
+    .setMaxRows(10);
+List&lt;OrderAggregate&gt; list = query.findList();
+{% endhighlight %} 
+<p>
+</p> 
+<p>You can use RawSql with normal entity beans as well fetching only the properties to need (creating partial y populated entity beans). 
+</p> 
+<p>Note that all entity beans built with RawSql invoke lazy loading etc and act just the same as if they where populated via Ebean generated SQL.
+</p> 
+<h2>4.1.4:  Autofetch – Automatic Query Tuning
+</h2> 
+<p>Ebean version 0.9.7 introduced support for Autofetch. This is a mechanism that can automatically tune your queries for optimal performance.
+</p> 
+<p>Autofetch automatical y modifies your queries – essential y control ing the select() and fetch() clauses to fetch al  the data your application uses but no more. This has the effect of reducing the amount of lazy loading and only fetches properties that are actual y used.
+</p> 
+<p>Autofetch is explained in more section<a href="ebean-userguides.html#32"> 5.1 Autofetch.</a>
+</p> 
+<p>Note that Autofetch can now be used with a query that you have explicitly specified some fetch() paths. Autofetch can add additional fetch() paths and tune which properties to fetch per path.   
+</p> 
+<h2>4.1.5:  Save &amp; Delete
+</h2> 
+<p>Saving and deleting is just a matter of calling the Ebean.save() or Ebean.delete() methods.  Transaction demarcation is covered fully in<a href="ebean-userguides.html#14"> 6. Transactions </a>.  Note if no transaction currently exists one will be created and commited for you (or rolled back if there was an error).
+</p> 
+{% highlight java %}Order order = Ebean.find(Order.class, 12);
+order.setStatus(OrderStatus.SHIPPED);order.setShipDate(...);
+// this will save the orderEbean.save(order);
+Cascading Save &amp; Delete
+{% endhighlight %} 
+<p>The mapping annotations @ManyToOne, @OneToMany, @OneToOne and @ManyToMany provide a cascade attribute which is used to control whether saves and deletes are cascaded.
+</p> 
+<p>
+</p> 
+<p>The default is to not cascade a save or delete (as per JPA spec).
+</p> 
+<p>The example below shows the Order entity bean with its mapping annotations. If you save an Order the details will be saved as well but the associated customer will not be saved as there is no cascade atttribute and the default is to not cascade. 
+</p> 
+{% highlight java %}...
+@Entity
+@Table(name="or_order")
+public class Order {
+    ...
+// no cascading
+    @ManyToOne
+    Customer customer;
+// save and delete cascaded
+    @OneToMany(cascade=CascadeType.ALL)
+List&lt;OrderDetail&gt; details;
+{% endhighlight %} 
+<p>
+</p> 
+<h2>4.1.6:  Update
+</h2> 
+<p>Update provides a way on issuing a insert, update or delete statement. 
+</p> 
+<p>This is useful for updating or deleting multiple rows (or a single row) with a single statement (often described as a "bulk" update).
+</p> 
+<p>This is also useful if you want to perform an update or delete without having to execute a query first. This is a typical approach for performing an update in a stateless web application.
+</p> 
+<p>The statement can be provided in as raw DML with the table names and column names or in a 'logical' form where entity name is used in place of the table name and property names are used in place of column names.
+</p> 
+<h2>4.1.7:  Transactions
+</h2> 
+<p>If no Transactions are demarcated Ebean will automatical y create and commit a transaction as required.
+</p> 
+{% highlight java %}Order order = ......
+// 'Implicit' transaction created and committed
+Ebean.save(order);
+{% endhighlight %} 
+<p>Transactions can be demarcated with via @Transactional annotation (requires Enhancement to be used) and serveral programmatic approaches – TxRunnable/ TxCal able and beginTransaction() etc.
+</p> 
+<p>Transactions are covered fully in section<a href="ebean-userguides.html#14"> 6. Transactions</a>
+</p> 
+<p>Some examples are:
+</p> 
+<b>@Transactional example
+</b> 
+<p>
+</p> 
+{% highlight java %}...
+public class MyService {
+@Transactional
+public void runFirst() throws IOException {
+// do multiple things in a single transaction
+User u1 = Ebean.find(User.class, 1);
+Customer cust = Ebean.find(Customer.class, 27);
+Ebean.save(cust);
+}
+{% endhighlight %} 
+<p>
+</p> 
+<b>Programatic TxRunnable Example 
+</b> 
+<p>
+</p> 
+{% highlight java %}public void myMethod() {
+  ...
+  System.out.println(" Some code in myMethod...");
+  // run in Transactional scope... 
+  Ebean.execute(new TxRunnable() {
+public void run() {
+// code running in "REQUIRED" transactional scope
+User user = Ebean.find(User.class, 1);
+...
+Ebean.save(user);...
+}
+});
+System.out.println(" more code in myMethod...");}
+Programatic beginTransaction() example
+Order order = ...
+Customer customer = order.getCustomer();
+// 'Explicit' transaction
+Ebean.beginTransaction();
+try {
+...
+Ebean.save(customer);
+Ebean.save(order);
+Ebean.commitTransaction();
+} finally {
+Ebean.endTransaction();
+}
+{% endhighlight %} 
+<p>With a Transaction can also control JDBC batching (batch size, flushing), turn on/off transaction logging, turn on/off cascading of save &amp; delete.
+</p> 
+<p>
+</p> 
+<h2>5: Relational Features
+</h2> 
+<p>Object Relational Mapping is great but it is also possible some of your problems will be easier to tackle in a relational way. Ebean provides a set of relational features so that you choose a relational approach as you see fit.
+</p> 
+<h2>5.1.1:  SqlQuery
+</h2> 
+<p>SqlQuery is where you specify the exact SQL SELECT statement and returns list, sets or maps of SqlRow objects. A SqlRow is a Map where the key is the column name.
+</p> 
+<p>This is a fairly lightweight API that you could use instead of going to raw JDBC (which is of course an option).
+</p> 
+{% highlight java %}String sql = "select b.id, b.title, b.type_code, b.updtime"
++" ,p.name as product_name "
++"from b_bug b join b_product p on p.id = b.product_id "+"where b.id = :id";
+SqlRow bug = Ebean.createSqlQuery(sql)
+.setParameter("id", 1).findUnique();
+String prodName = bug.getString("product_name");
+String title = bug.getString("title");
+{% endhighlight %} 
+<p>Note that you can use "Named" queries and put the sql statements in orm.xml rather than having it in your code.
+</p> 
+<h2>5.1.2:  SqlUpdate
+</h2> 
+<p>In similar fashion to SqlQuery you can specify a SQL INSERT, UPDATE or DELETE statement with named or positioned parameters.
+</p> 
+{% highlight java %}String dml = "update b_bug set title=:title where id = :id";
+SqlUpdate update = Ebean.createSqlUpdate(dml)
+.setParameter("title", "Updated Again").setParameter("id", 1);
+int rows = update.execute();
+{% endhighlight %} 
+<p>
+</p> 
+<h2>5.1.3:  CallableSql
+</h2> 
+<p>Cal ableSql provides a way to cal  a database stored procedure.
+</p> 
+{% highlight java %} String sql = "{call sp_order_mod(?,?)}";
+CallableSql cs = Ebean.createCallableSql(sql);
+cs.setParameter(1, "turbo");
+cs.registerOut(2, Types.INTEGER);
+Ebean.execute(cs);
+// read the out parameter Integer returnValue = (Integer) cs.getObject(2);
+{% endhighlight %} 
+<p>You can extend Cal ableSql and you can also get the java.sql.Connection from a Transaction and use raw JDBC API to call a stored procedure. 
+</p> 
+<h2>5.1.4:  Summary
+</h2> 
+<p>These relational features provide an alternative "relational" approach to the ORM features without resorting to direct JDBC use.
+</p> 
+<p>
+</p> 
+<h2>5.2: Raw JDBC 
+</h2> 
+<p>You can't always predict when your application requirements can't be meet with the features in Ebean. It is nice you now you can easily use raw JDBC if and when you need to.
+</p> 
+<p>The java.sql.Connection object can be returned from a transaction, and with that you can perform any raw JDBC cal s you like. 
+</p> 
+<p>This may be useful for Savepoints, advanced Clob/Blob use or advanced stored procedure calls (if Cal ableSql doesn't do the business for you).
+</p> 
+{% highlight java %}Transaction transaction = Ebean.beginTransaction();try {
+Connection connection = transaction.getConnection();
+// use raw JDBC
+...
+ // assuming we updated the "o_shipping_details" table
+ // inform Ebean so it can maintain its 'L2' cache
+ transaction.addModification("o_shipping_details",false,true,false);
+Ebean.commitTransaction();
+} finally {
+Ebean.endTransaction();
+}
+{% endhighlight %} 
+<p>The <i><b>transaction.addModification() </b></i>in the code above informs Ebean that your jdbc code updated the o_shipping_details table.  Ebean uses this information to automatically manage its "L2" cache as well as maintain Lucene text indexes.
+</p> 
+<p>
+</p> 
+<h2>6: Queries
+</h2> 
+<h2>6.1: Background
+</h2> 
+<p>Ebean has it's own query language. Prior to this decision JPQL (the JPA query language) was investigated to see if it would meet the desired goals of Ebean and it did not. Specifically I wanted to support "Partial Objects" via the query language and it is difficult to see how JPQL will evolve to support this (specifical y difficulties around its select clause). 
+</p> 
+<p>Apart from "Partial Object" support there was also a desire to simplify the join syntax, specifically Ebean will automatically determine the type of join (outer join etc) for you and also automatical y add joins to support predicates and order by clauses.
+</p> 
+<p>JPQL is more powerful with the ability to mix entity beans with scalar values returning Object[]. However, this feature also could be a major stumbling block for it to evolve support for partial objects for any node in the object graph.
+</p> 
+<p>In summary you could say the Ebean query language is much simplier that JPQL with the benefit of proper support for "Partial Objects" for any node in the object graph (this is not possible with JPQL in it's current form).
+</p> 
+<p><b>"Partial Object"</b> support in Ebean is important for design reasons and performance reasons. From a performance perspective your queries are more performant if they fetch less data back from the database. From a design perspective you do not need to model using secondary tables but instead use partial objects at any depth in the query.
+</p> 
+<p>For example, to build an object graph for an Order you may want some product information for each orderDetail.
+</p> 
+<h2>6.2: Examples
+</h2> 
+{% highlight java %}// find all the orders fetching all the properties of order
+find order 
+// find all the orders fetching all the properties of order
+// ... this is the same as the first query
+find order (*)
+// find all the orders fetching the id, orderDate and shipDate
+// ... This is described as a "partial object query"
+// ... the ID property is *ALWAYS* fetched
+find order (orderDate, shipDate)
+// find all the orders (and orderDetails)
+// ... fetching all the properties of order
+// ... and all the properties of orderDetails
+// ... the type of fetch(Outer etc) is determined automatically
+find  order
+fetch orderDetails
+// find all the orders (with their orderDetails)
+// ... fetching all the properties of order
+// ... and all the properties of orderDetails
+find  order (*)
+fetch orderDetails (*)
+// find all the orders (with orderDetails and products)
+// ... fetching the order id, orderDate and shipDate
+// ... fetching all the properties for orderDetail
+// ... fetching the product id, sku and name
+find  order (orderDate, shipDate)
+fetch orderDetails (*)
+fetch orderDetails.product (sku, name)
+{% endhighlight %} 
+<p>Every object in the object graph can be a partial object. This is what you can't do in JPQL yet and it's hard to see how this will be supported in JPQL due to its design – hopefully I'm wrong on this point.  
+</p> 
+<p>These Partial y populated objects are will lazy load as required and are fully updatable etc. You can treat them just like fully populated objects.
+</p> 
+<p>Autofetch can use partial objects to only fetch the properties that the application actual y uses. In this way you can get the performance of partial objects without any work on your part (Autofetch determines the joins and properties to fetch for you).
+</p> 
+{% highlight java %}// Ebean will automatically add joins to support
+// where clauses and order by clauses as necessary
+// ... in this case a join to customer is added
+// ... and a join to the customers billing address is added
+find order
+where customer.name like :custname
+order by customer.billingAddress.city
+// you can use an order by and limit offset clause
+find order
+where customer.name like :custname
+order by customer.name desc, id
+limit 10 offset 20
+// You can use +readonly hint on any part of the object graph
+// ... which means those objects are not modifyable
+find customer (+readonly)
+fetch billingAddress (+readonly, line1, city)
+{% endhighlight %} 
+<p>
+</p> 
+<h2>6.3: API: createQuery(Class c) and find(Class c)
+</h2> 
+<p>This needs a little clarification.
+</p> 
+{% highlight java %}// these are the same
+Query&lt;Order&gt; query = Ebean.createQuery(Order.class); 
+Query&lt;Order&gt; query = Ebean.find(Order.class); 
+{% endhighlight %} 
+<p>This may be confusing but these two methods do exactly the same thing. The reason both exist is because the createQuery() style is consistent with JPA and could be argued is a better more accurate name. However, I feel that find() is more consistent with the fluid API style.
+</p> 
+<p>So, apologies in that there are 2 ways to do the same thing. 
+</p> 
+{% highlight java %}// fluid API style with find()
+List&lt;Order&gt; list =
+Ebean.find(Order.class).fetch("customer").where().eq("status.code", "SHIPPED").findList();
+{% endhighlight %} 
+<h2>6.4: Named Queries
+</h2> 
+{% highlight java %}...
+@NamedQueries(value={
+  @NamedQuery(
+  name="bugsSummary"
+,query="find (name, email) fetch loggedBugs (title, status) 
+  where id=:id  "),
+  @NamedQuery(
+name="bugStatus",
+    query="fetch loggedBugs where loggedBugs.status = :bugStatus
+           order by name")
+})
+@Entity
+@Table(name="s_user")
+public class User implements Serializable {
+...
+{% endhighlight %} 
+<p>You can have named queries, where you define the query. Note that the names of the queries are per entity type (not global as they are in JPA).
+</p> 
+<p>Once you get a named query you set any named parameters and then execute it – in the case below we use findUnique() as we expect only one object graph returned.
+</p> 
+{% highlight java %}User u = Ebean.createNamedQuery(User.class, "bugsSummary")
+.setParameter("id", 1)
+.findUnique();
+{% endhighlight %} 
+<p>
+</p> 
+<h2>6.4.1:  Named Queries are Modifyable
+</h2> 
+<p>Named queries are parsed early and returned as query objects to you that you can modify. This means that you can get a named query and then modify the query by adding to the where clause, setting the order by, limits etc. 
+</p> 
+<p>
+</p> 
+<p>This is an intentional feature and means that you can use Named Queries as a "starting point" to then modify via code and execute.  
+</p> 
+{% highlight java %}// you can treat namedQueries as starting points... 
+// ... in that you can modify them via code
+// ... prior to executing the query
+// you can modify a named query...
+Set&lt;User&gt; users = Ebean.createQuery(User.class, "bugStatus")
+.setParameter("bugStatus", "NEW")
+// you can add to the where clause
+.where().ilike("name", "rob%")
+// you can set/override the order by
+.orderBy("id desc")
+// you can set/override limits (max rows, first row)
+.setMaxRows(20)
+.findSet();
+{% endhighlight %} 
+<p>
+</p> 
+<h2>6.5: FetchConfig - "Query Joins"
+</h2> 
+<p>When you specify a Query with Ebean it can result in more than 1 SQL query. Sometimes you want explicit control over this (what the secondary queries are, batch size used, eager or lazily invoked)
+</p> 
+<p>FetchConfig gives you the ability to specify these "secondary queries" and let them executed lazily ("lazy loading join") or eagerly ("query join"). 
+</p> 
+<p>Note that Ebean will automatically convert some joins to "query joins" when it needs to (when it is building object graphs with multiple *ToMany relationships or when limit offset is used with a *ToMany relationship). So you don't need to explicitly use FetchConfig and leave it up to Ebean if you wish. 
+</p> 
+<p>Example: Normal "Fetch Join"
+</p> 
+{% highlight java %}// Orders and their customers fetch in a single SQL query
+List&lt;Order&gt; l0 = Ebean.find(Order.class)
+   .fetch("customer")
+   .findList();
+{% endhighlight %} 
+<p>Example: "Query Join" … results in 2 SQL queries used to build the object graph
+</p> 
+{% highlight java %}// 2 SQL statements are used to build this object graph
+// The first SQL query fetches the Orders and the second
+// SQL query fetches customers
+List&lt;Order&gt; l0 = Ebean.find(Order.class)
+   .fetch("customer", new FetchConfig().query())
+   .findList();
+{% endhighlight %} 
+<p>The reason for using "Query Joins" as opposed to "Fetch joins" is that there are some cases where using multiple queries is more efficient that a single query.
+</p> 
+<p>Any time you want to load multiple OneToMany associations it will likely be more performant as multiple SQL queries. If a single SQL query was used that would result in a Cartesian product. 
+</p> 
+<p>There can also be cases loading across a single OneToMany where 2 SQL queries (using Ebean "query join") can be more efficient than one SQL query (using Ebean "fetch join"). When the "One" side is wide (lots of columns) and the cardinality difference is high (a lot of "Many" beans per "One" bean) then this can be more efficient loaded as 2 SQL queries. 
+</p> 
+<p>
+</p> 
+<p>Example: Two "Query Joins" results in 3 SQL queries used to build this object graph
+</p> 
+{% highlight java %}// A more advanced example with multiple query joins
+List&lt;Order&gt; l0 = Ebean.find(Order.class)
+ .select("status, shipDate")
+.fetch("details", "orderQty, unitPrice", new FetchConfig().query())
+ .fetch("details.product", "sku, name")
+.fetch("customer", "name", new FetchConfig().query(10))
+.fetch("customer.contacts","firstName, lastName, mobile")
+ .fetch("customer.shippingAddress","line1, city")
+ .findList();
+{% endhighlight %} 
+<p>The resulting 3 sql queries are:
+</p> 
+{% highlight java %}// query 1 … the main query
+&lt;sql summary='Order' &gt;
+select o.id c0, o.status c1, o.ship_date c2, o.customer_id c3
+from o_order o&lt;/sql&gt;
+{% endhighlight %} 
+<p>Query 1 - Note: customer_id was automatical y added to support query join.
+</p> 
+{% highlight java %}// query 2 … query join on customer
+&lt;sql mode='+query' summary='Customer, shippingAddress
++many:contacts' load='path:customer batch:10 actual:2' &gt;
+select c.id c0, c.name c1
+        , cs.id c2, cs.line_1 c3, cs.city c4
+        , cc.id c5, cc.first_name c6, cc.last_name c7, cc.mobile c8 
+from o_customer c
+left outer join o_address cs on cs.id = c.shipping_address_id
+left outer join contact cc on cc.customer_id = c.id 
+where c.id in (?,?,?,?,?,?,?,?,?,?)
+order by c.id
+&lt;/sql&gt;
+{% endhighlight %} 
+<p>Query 2 - fetching the first 10 customers referenced (batch:10) but there where actual y only 2 to fetch (actual:2).
+</p> 
+<p>
+</p> 
+{% highlight java %}// query 3 … query join on details
+&lt;sql mode='+query' summary='Order +many:details, details.product'
+load='path:details batch:100 actual:3' &gt;
+select o.id c0
+        , od.id c1, od.order_qty c2, od.unit_price c3
+        , odp.id c4, odp.sku c5, odp.name c6
+from o_order o
+left outer join o_order_detail od on od.order_id = o.id
+left outer join o_product odp on odp.id = od.product_id 
+where o.id in (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+order by o.id&lt;/sql&gt;
+{% endhighlight %} 
+<p>Query 3 – fetching the order details for the first 100 orders (batch:100).
+</p> 
+<h2>6.5.1:  FetchConfig.lazy() - "Lazy Joins"
+</h2> 
+<p>If a join is not defined at al  (neither a fetch join or a query join) – then lazy loading will by default just fetch al  the properties for that entity.
+</p> 
+<p>FetchConfig.lazy() allows you to control that lazy loading query – define the batch size, properties to select and also fetch paths to include on the lazy load query. 
+</p> 
+<p>This is very similar to a "query join" except that the loading occurs on demand (when the property is requested and not already loaded).
+</p> 
+<p>The reason you would want to control the lazy loading query is to optimise performance for further lazy loading (avoid N+1 queries, define joins that should be included for lazy loading queries, load only the properties required and no more).
+</p> 
+<p> 
+</p> 
+<p>Example: Control the query used to lazy load 
+</p> 
+{% highlight java %}// control the lazy loading of customers ...
+List&lt;Order&gt; list = Ebean.find(Order.class)
+   .fetch("customer","name", new FetchConfig().lazy(5))
+   .fetch("customer.contacts","contactName, phone, email")
+   .fetch("customer.shippingAddress")
+   .where().eq("status",Order.Status.NEW)   .findList();
+{% endhighlight %} 
+<p>In the example above the orders are loaded. Only when the application requests a 
+</p> 
+<p>customer property (that is not the customer's id) then the lazy loading of the customer is invoked. At that point the customer name is loaded, with the contacts and shippingAddress – this is done in batch of 5 customers.
+</p> 
+<p>Note that if the customer status is requested (rather than the customer name) and that invokes the lazy loading then all the customer's properties are loaded (rather than just the customers name). 
+</p> 
+{% highlight java %}Order order = list.get(0);Customer customer = order.getCustomer();
+// this invokes the lazy loading of 5 customersString name = customer.getName();
+{% endhighlight %} 
+<p>The resulting lazy loading query is … 
+</p> 
+{% highlight java %}&lt;sql mode='+lazy' summary='Customer, shippingAddress +many:contacts'
+load='path:customer batch:5 actual:2' &gt;
+select c.id c0, c.name c1
+        , cs.id c2, cs.line_1 c3, cs.line_2 c4, cs.city c5,
+cs.cretime c6, cs.updtime c7, cs.country_code c8
+        , cc.id c9, cc.phone c10, cc.email c11 
+from o_customer c
+left outer join o_address cs on cs.id = c.shipping_address_id
+{% endhighlight %} 
+<p><b>left outer join contact cc on cc.customer_id = c.id</b> 
+</p> 
+{% highlight java %}where c.id in (?,?,?,?,?)
+order by c.id
+&lt;/sql&gt;
+{% endhighlight %} 
+<p>
+</p> 
+<h2>6.5.2:  Using both - new FetchQuery.queryFirst(100).lazy(10);
+</h2> 
+<p>You can use both queryFirst() and lazy() on a single join. The queryFirst() part defines the number of beans that will be loaded eagerly via an additional query and then lazy defines the batch size of the lazy loading that occurs after than (if there is any).
+</p> 
+<h2>6.5.3:  +query and +lazy – query language syntax
+</h2> 
+<p>To define "query joins" and "lazy joins" in the query language you can use +query and +lazy. Optionally you can specify the batch size for both.
+</p> 
+<p>
+</p> 
+{% highlight java %}find order
+join customers (+query )
+where status = :status
+find order (status, shipDate)
+join customers (+lazy(10)  name, status)
+where status = :orderStatus
+{% endhighlight %} 
+<p>
+</p> 
+<h2>6.6: Asynchronous Query Execution – findFutureList() etc
+</h2> 
+<p>Ebean has built in support for executing queries asynchronously. These queries are executed in a background thread and "Future" objects are returned. 
+</p> 
+<p>The "Future" objects returned extend <i><b>java.util.concurrent.Future</b></i>. This provides support for cancel ing the query, checking if it is cancel ed or done and getting the result with waiting and timeout support. 
+</p> 
+{% highlight java %}// Methods on Query for ansychronous execution
+public FutureList&lt;T&gt; findFutureList();
+public FutureIds&lt;T&gt; findFutureIds();
+public FutureRowCount&lt;T&gt; findFutureRowCount();
+{% endhighlight %} 
+<p>Example: Using FutureList
+</p> 
+{% highlight java %}Query&lt;Order&gt; query = Ebean.find(Order.class);
+// find list using a background threadFutureList&lt;Order&gt; futureList = query.findFutureList();
+// do something else ...
+if (!futureList.isDone()){
+{% endhighlight %} 
+<p><b>// you can cancel the query. If supported by the JDBC</b> 
+</p> 
+{% highlight java %}// driver and database this will actually cancel the
+// sql query execution on the database
+futureList.cancel(true);
+}
+// wait for the query to finish … no timeout
+List&lt;Order&gt; list = futureList.get();
+// wait for the query to finish … with a 30sec timeout
+List&lt;Order&gt; list2 = futureList.get(30, TimeUnit.SECONDS);
+{% endhighlight %} 
+<h2>6.7: PagingList Query
+</h2> 
+<p>PagingList is used to make it easy to page through a query result. Paging through the results means that instead of all the results are not fetched in a single query Ebean will use SQL to limit the results (limit/offset, rownum, row_number() etc).
+</p> 
+<p>Instead of using PagingList you could just use setFirstRow() setMaxRows() on the query yourself. If you are building a stateless application (not holding the PagingList over multiple requests) then this approach is a good option.
+</p> 
+<p>For Stateful applications PagingList provides some benefits.
+</p> 
+<ul><li>Fetch ahead (background fetching of the next page via a FutureList query)</li>
+<li>Automatic propagation of the persistence context</li>
+<li>Automatically getting the total row count (via a FutureRowCount query)</li>
+</ul> 
+<p>So with PagingList when you use Page 2 it will automatical y fetch Page 3 data in the background (using a FutureList query). The persistence context is automatical y propagated meaning that all the paging queries use the same persistence context.
+</p> 
+{% highlight java %}int pageSize = 10;
+PagingList&lt;TOne&gt; pagingList = 
+Ebean.find(TOne.class)
+.where().gt("name", "2").findPagingList(pageSize);
+// get the row count in the background...
+// ... otherwise it is fetched on demand
+// ... when getTotalRowCount() or getTotalPageCount()
+// ... is called
+pagingList.getFutureRowCount();
+// get the first page
+Page&lt;TOne&gt; page = pagingList.getPage(0);
+// get the beans from the page as a list
+List&lt;TOne&gt; list = page.getList();
+int totalRows = page.getTotalRowCount();
+if (page.hasNext()) {
+Page&lt;TOne&gt; nextPage = page.next();
+...
+}
+{% endhighlight %} 
+<p>In a stateless application you should set fetch ahead to false as you are not going to benefit from it.
+</p> 
+{% highlight java %}PagingList&lt;TOne&gt; pagingList = 
+Ebean.find(TOne.class)
+.where().gt("name", "2")
+.findPagingList(10);
+// fetchAhead not useful in a stateless application
+pagingList.setFetchAhead(false);
+Page&lt;TOne&gt; firstPage = pagingList.getPage(0);
+{% endhighlight %} 
+<p>
+</p> 
+<h2>7: Autofetch
+</h2> 
+<h2>7.1.1:  What is Autofetch
+</h2> 
+<p>Autofetch is an idea that has come from Ali Ibrahim's work at the University of Texas.  Ali and colleagues developed the idea and are working on a Hibernate implementation of Autofetch. 
+</p> 
+<p>Link: <a href="http://www.cs.utexas.edu/~aibrahim/autofetch/"> http://www.cs.utexas.edu/~aibrahim/autofetch/ </a>
+</p> 
+<p>In short, Autofetch is a feature of an ORM where the ORM will automatically tune your queries for optimal performance by using profiling information. The ORM will gather object graph usage (profiling) by the application for queries and then use this information to automatically tune the future queries (specify joins and properties to fetch etc).
+</p> 
+<p>In my opinion "Autofetch" will have a profound effect on how ORM's will define and execute queries (build object graphs). It provides a means for highly performant object graph traversal in a transparent manor – this is a <i><b>very big deal</b></i> !!!
+</p> 
+<h2>7.1.2:  Autofetch in Ebean
+</h2> 
+<p>When I first came across "Autofetch" I was immediately sold on the idea. "Autofetch" is not a bolt on feature for Ebean but instead has been built into it's core internals and I see it as a hugely important feature for Ebean. 
+</p> 
+<p>With the "Partial Object" support in Ebean, Autofetch is even sweeter as it automatically takes care of selecting just the properties that the application uses as well as handling the joins. This means you get the performance benefit of partial objects without any work on the part of the developer – which is important as your applications get bigger and more complex.
+</p> 
+<b>Explicit Control
+</b> 
+<p>On the query object you can explicitly specify if you want to use autofetch or not.
+</p> 
+{% highlight java %}  // explicitly turn on Autofetch for this query
+  query.setAutofetch(true); 
+{% endhighlight %} 
+<p>
+</p> 
+<b>Implicit Control
+</b> 
+<p>There are a number of properties in ebean.properties which control how autofetch works.
+</p> 
+{% highlight java %}# enable autofetch
+ebean.autofetch.querytuning=true
+# enable collection of profiling informationebean.autofetch.profiling=true
+# implicit autofetch mode
+# default_off, default_on, default_on_if_empty
+ebean.autofetch.implicitmode=default_on
+# minimum amount of profiling to collect before
+# autofetch will start tuning the query
+ebean.autofetch.profiling.min=1
+# profile every query up to base
+ebean.autofetch.profiling.base=10
+# after base collect profiling on 5% of queries
+ebean.autofetch.profiling.rate=0.05
+{% endhighlight %} 
+<p><i>property</i>
+</p> 
+<p><i>type/values</i>
+</p> 
+<p><i>description</i>
+</p> 
+<p>ebean.autofetch.querytuning
+</p> 
+<p>boolean
+</p> 
+<p>If true enables Autofetch to tune queries
+</p> 
+<p>ebean.autofetch.profiling
+</p> 
+<p>boolean
+</p> 
+<p>If true enables profiling information to be collected
+</p> 
+<p>ebean.autofetch.implicitmode
+</p> 
+<p>default_off
+</p> 
+<p>default_on_if_empty means autofetch will only tune the query if neither select() 
+</p> 
+<p>default_on
+</p> 
+<p>nor fetch() has been explicitly set on the 
+</p> 
+<p>default_on_if_empty 
+</p> 
+<p>query.
+</p> 
+<p>ebean.autofetch.profiling.min
+</p> 
+<p>integer
+</p> 
+<p>The minimum amount of profiled queries to be collected before the automatic query tuning will start to occur
+</p> 
+<p>ebean.autofetch.profiling.base integer
+</p> 
+<p>Will profile every query up to this number and after than will profile based on the profiling.rate (5% of queries etc)
+</p> 
+<p>ebean.autofetch.profiling.rate
+</p> 
+<p>float
+</p> 
+<p>The percentage of queries that are profiled after the base number has been collected
+</p> 
+<b>JMX and Programatic Control of Autofetch
+</b> 
+<p>You can manage Autofetch at runtime either via JMX or programmatically.
+</p> 
+<p>
+</p> 
+{% highlight java %}// get the 'default' EbeanServer
+EbeanServer server = Ebean.getServer(null);
+AdminAutofetch adminAutofetch = server.getAdminAutofetch();
+adminAutofetch.setQueryTuning(false);
+adminAutofetch.setProfiling(false);
+adminAutofetch.setProfilingRate(0.50f);
+adminAutofetch.clearProfilingInfo();
+adminAutofetch.clearTunedQueryInfo();
+{% endhighlight %} 
+<p>
+</p> 
+<h2>8: Persistence Context
+</h2> 
+<p>Although Ebean doesn't have an "Entity Manager" it does have a "persistence context". In fact, you could go as far to say that any ORM worth using needs a "persistence context".
+</p> 
+<h2>8.1: Definition
+</h2> 
+<p>JPA v1.0 specification - section 5.1
+</p> 
+<p>"A persistence context is a set of managed entity instances in which <i>for any persistent entity <b>identity</b>there is a <b>unique entity instance</b></i>. Within the persistence context, the entity instances and their lifecycle are managed by the entity manager."
+</p> 
+<p>Ebean has a "Persistence Context" to ensure ... unique entity instances <i><b>BUT</b></i> Ebean has a different approach to lifecycle management.
+</p> 
+<p>That is, Ebean has a persistence context to ensure "... unique entity instance." (the blue section of JPA's definition) but has a different approach to the lifecycle management compared with JPA. Ebean has no entity manager and no persist/merge/flush lifecycle methods.
+</p> 
+<h2>8.2: Unique Entity Instances
+</h2> 
+<p>Ebean uses the "persistence context" for queries and lazy loading (when it is building object graphs). The purpose of this is to ensure that 'consistent' object graphs are constructed (1 unique instance per identity).
+</p> 
+<p>For example, in fetching a list of orders and their customers … the persistence context ensures that you only get 1 customer instance for it's given id (e.g. you are <i><b>NOT</b></i> al owed to have 2 or more instances of "customer id=7".
+</p> 
+<p>You could even say that any ORM worth using needs a persistence context when it builds object graphs from relational result sets due to the nature of relational result sets.   
+</p> 
+<p>For example, if you didn't have a persistence context and did al ow 2 or more instances of "customer 7" … and modified one instance but not the other … things get very ugly. The "persistence context" ensures the user/application code works with unique entity instances.
+</p> 
+<h2>8.3: Lifecycle Management 
+</h2> 
+<p>Ebean has a different approach to lifecycle management. The core difference is that with Ebean each bean itself has it's own dirty checking (detects when it has been modified and holds it's old/original values for optimistic concurrency checking).
+</p> 
+<p>With JPA implementations generally the dirty checking is performed by the entity manager. The entity manager general y holds the old/original values for optimistic concurrency checking and the beans need to be 'attached' to an entity manager to be 'flushed' (as an 
+</p> 
+<p>
+</p> 
+<p>insert/update/delete). [Note: JDO based JPA implementations do this a bit differently]. 
+</p> 
+<b>PRO's for Ebean's approach
+</b> 
+{% highlight java %}<li>No need to manage Entity Manager's</li>
+<li>save/delete simpler that attached/detached beans with persist/merge/flush etc</li>
+CON's for Ebean's approach
+<li>Ebean makes an assumption that scalar types are immutable. Most scalar types (String, Integer, Double, Float, BigDecimal etc) are immutable, however, some such as java.util.Date are not. What this means is that with Ebean if you mutate a java.util.Date Ebean will <i><b>NOT</b></i> detect the change  – instead you have to set a different java.util.Date instance.</li>
+{% endhighlight %} 
+<h2>8.4: Transaction scoped
+</h2> 
+<p>With Ebean the persistence context is transaction scoped. This means that when you begin a new transaction (implicitly or explicitly) Ebean will start a new persistence context.
+</p> 
+<p>The persistence context uses weak references and lives beyond the end of a transaction. This enables any lazy loading occuring after the transaction ends to use the same persistence context that the instance was created with.
+</p> 
+<p>This means, a persistence context 
+</p> 
+<ul><li>Starts when a transaction starts</li>
+<li>Is used during the transactions scope to build all object graphs (queries)</li>
+<li>Lives beyond the end of a transaction so that all lazy loading occuring on that object graph also uses the same persistence context</li>
+</ul> 
+<h2>8.5: Multi-threaded object graph construction
+</h2> 
+<p>The persistence context is designed/implemented to be thread safe. Ebean internally can use multiple threads for object graph construction (query execution) and I expect some advanced users to take an interest in this (and may want to do this in their own application code).    
+</p> 
+<p>When Ebean uses background threads for fetching (findFutureList,  PagingList, useBackgroundFetchAfter etc) Ebean will automatical y propagate the persistence context. In these cases multiple threads can be using the same persistence context concurrently.
+</p> 
+<p>This also enables Ebean to provide more advanced multi-threaded query strategies in the future.
+</p> 
+<h2>8.6: Persistence Context as a "first level cache"
+</h2> 
+<p>The persistence context is sometimes described as the "first level cache". I have also seen 
+</p> 
+<p>
+</p> 
+<p>it described as the "transactional cache" in that it is scoped to a transaction or longer.
+</p> 
+<p> 
+</p> 
+{% highlight java %}// a new persistence context started with the transaction
+Ebean.beginTransaction();try {
+// find "order 72" results in that instance being put
+// into the persistence context
+Order order = Ebean.find(Order.class, 72);
+// finds an existing "order 72" in the persistence context
+// ... so just returns that instance
+Order o2 = Ebean.find(Order.class, 72);
+Order o3 = Ebean.getReference(Order.class, 72);
+// all the same instance
+Assert.assertTrue(order == o2);
+Assert.assertTrue(order == o3);
+} finally {
+Ebean.endTransaction();
+}
+{% endhighlight %} 
+<p>The code above shows that  there is only 1 instance of "Order 72". As we try to fetch it again (during the scope of a single persistence context) we end up getting back the same instance.
+</p> 
+<p>However, typically you don't write code that fetches the same Order multiple times in a single transaction. The code above is not something you would typical y write.
+</p> 
+<p>A more realistic example would be when the persistence context is used:
+</p> 
+{% highlight java %}// a new persistence context started with the transaction
+Ebean.beginTransaction();try {
+// find "customer 1" results in this instance being
+// put into the persistence context
+Customer customer = Ebean.find(Customer.class, 1);
+// for this example … "customer 1" placed "order 72"
+// when "order 72" is fetched/built it has a foreign// key value customer_id = 1...
+ 
+// As customer 1 is already in the persistence context// this same instance of customer 1 is used  
+{% endhighlight %} 
+<p>
+</p> 
+{% highlight java %}Order order = Ebean.find(Order.class, 72);Customer customerB = order.getCustomer();
+// they are the same instanceAssert.assertTrue(customer == customerB);
+} finally {
+Ebean.endTransaction();
+}
+{% endhighlight %} 
+<p> 
+</p> 
+<p>From these examples you should hopefully see that the persistence context acts as a cache to some degree. It can sometimes reduce the number of database queries required when you get object graphs and navigate them.
+</p> 
+<p>However, the primary function of the persistence context is to ensure ... unique instances for a given identity (so that the object graphs are constructed in a consistent manor). The fact that it sometimes looks/acts like a cache is more of a side effect.  
+</p> 
+<p>
+</p> 
+<h2>9: Caching (L2 Server cache)
+</h2> 
+<p>When we want to talk about caching for performance we are talking about the "Level 2" cache or the "server cache".  It is cal ed the "Level 2 cache" because the persistence context is often referred to as the "Level 1 cache".
+</p> 
+<p>The goal of the L2 server cache is to gain very significant performance improvement by not having to hit the database.
+</p> 
+<h2>9.1: Bean and Query caches
+</h2> 
+<p>Ebean has 2 types of caches – Bean caches and Query caches. 
+</p> 
+<b>Bean Caches
+</b> 
+<p>Bean caches hold entity beans and are keyed by their Id values.  
+</p> 
+<b>Query Caches
+</b> 
+<p>Query caches hold the results of queries (Lists, Sets, Maps of entity beans) and are keyed by the query hash value (effectively a hash of the query and its bind values).
+</p> 
+<p>The entries in a query cache are invalidated by <i><b>ANY</b></i> change to the underlying table – insert, update or delete. This means that the query cache is only useful on entities that are infrequently modified (typical y "lookup tables" such as countries, currencies, status codes etc).
+</p> 
+<p> 
+</p> 
+<p>
+</p> 
+<h2>9.2: Read Only and Shared Instances
+</h2> 
+<p>For a performance optimisation when using the cache you can inform Ebean that you want "read only" entities. If you ask for "read only" entities Ebean can give you the instance that is in the cache rather than creating a new copy (creating a new instance and copying the data from the cached instance).
+</p> 
+<p>To be safe in al owing many threads to share the same instances (from the cache) Ebean ensures that these instances can not be mutated. It sets flags (sharedInstance=true, readOnly=true) and any attempt to modify the entity (via setters or putfields) results in an Il egalStateException being thrown.
+</p> 
+{% highlight java %}// Cache countries. Use readOnly=true so unless explicitly
+// stated in the query we will return read only/shared instances
+@CacheStrategy(readOnly=true,warmingQuery="order by name")
+@Entity
+@Table(name="o_country")
+public class Country {
+{% endhighlight %} 
+<p>
+</p> 
+<p>Note that Countries is a good candidate for a default setting of readOnly=true. This is because (for my application) country information is very rarely changed. The application code mostly treats the countries as read only.
+</p> 
+<p>Now, whenever we get a country (via direct query or indirectly via relationships/joins) unless we explictly say query.setReadOnly(false) we are going to get back readOnly instances that we will not be able to mutate.
+</p> 
+{% highlight java %}// we will use the cache .. and the instance
+// in the cache is returned to us (not a copy)
+Country country = Ebean.find(Country.class, "NZ");
+// this country instance is readOnly
+Assert.assertTrue(Ebean.getBeanState(country).isReadOnly());
+try {
+// we can't modify a readOnly bean
+// …  a IllegalStateException is thrown
+country.setName("Nu Zilund");
+Assert.assertFalse("Never get here",true);
+} catch (IllegalStateException e){
+Assert.assertTrue("This is readOnly",true);
+}
+// explicitly state we want a MUTABLE COPY
+// … not the same instance as the one in cache
+// … a copy is made and returned instead
+Country countryCopy = Ebean.find(Country.class)
+.setReadOnly(false)
+.setId("NZ").findUnique();
+// we can mutate this one
+countryCopy.setName("Nu Zilund");
+// save it, automatically maintaining the cache ...
+// evicting NZ from the Country bean cache and
+// clearing the Country query cache
+Ebean.save(countryCopy);
+{% endhighlight %} 
+<p>
+</p> 
+<h2>9.3: Shared Instances
+</h2> 
+<p>Ebean sets a sharedInstance flag on a bean whenever it is put into the cache. This is used to ensure that the bean is always treated in a read only fashion (and can be safely shared by multiple threads concurrently).
+</p> 
+<p>You can invoke lazy loading on a sharedInstance. When that occurs the sharedInstance flag is propagated to the lazily loaded beans. If you lazy load a col ection (list, set or map) then the col ection is also marked with the sharedInstance flag and that means you can't add or remove elements from the collection (list, set or map).
+</p> 
+<p>A sharedInstance and al  its associated beans and col ections are are all ensured to be read only and can be safely shared by multiple threads concurrently.
+</p> 
+<h2>9.4: Automatic Cache Maintenance
+</h2> 
+<p>When you save entity beans or use an Update or SqlUpdate, Ebean will automatically invalidate the appropriate parts of the cache.
+</p> 
+<p>If you save a entity bean that results in an update and there is a matching bean in the cache it will be evicted automatically from the cache at commit time.
+</p> 
+<p>
+</p> 
+<p>If you save an entity bean that results in an insert then the bean cache is not effected.
+</p> 
+<p>Whenever <i><b>ANY</b></i> change is made (insert/update or delete) the entire query cache for that bean type is invalidated.
+</p> 
+<h2>9.5: Handling External Modification (via stored procedures etc)
+</h2> 
+<p>When you save/delete beans via Ebean.save() and Ebean.delete() etc Ebean will automatically maintain its cache (removing cached beans and cached queries as appropriate). However, you may often find yourself modifying the database outside of Ebean. 
+</p> 
+<p>For example, you could be using other frameworks, your own JDBC code, stored procedures, batch systems etc. When you do so (and you are using Ebean caching) then you can inform Ebean so that it invalidates appropriate parts of its cache.
+</p> 
+{% highlight java %}// inform Ebean that some rows have been inserted and updated
+// on the o_country table.
+// … Ebean will maintain the appropriate caches.
+boolean inserts = true;
+boolean updates = true;
+boolean deletes = false;
+Ebean.externalModification("o_country", inserts, updates, deletes);
+// clearAll() caches via the ServerCacheManager ...
+ServerCacheManager serverCacheManager = 
+Ebean.getServerCacheManager();
+// Clear all the caches on the default/primary EbeanServer
+serverCacheManager.clearAll();
+// clear both the bean and query cache
+// for Country beans ...
+serverCacheManager.clear(Country.class);
+// Warm the cache of Country beans Ebean.runCacheWarming(Country.class);
+{% endhighlight %} 
+<p>
+</p> 
+<h2>9.6: @CacheStrategy - automatically using the bean cache
+</h2> 
+<p>The easiest way to use caching is to specify the @CacheStrategy annotation on the entity class. This means that Ebean will try to use the bean cache as much as possible when it fetches beans of that type.
+</p> 
+{% highlight java %}// Cache countries. Use readOnly=true so unless explicitly
+// stated in the query we will return read only/shared instances
+@CacheStrategy(readOnly=true,warmingQuery="order by name")
+@Entity
+@Table(name="o_country")
+public class Country {
+// automatically use the cache
+Country country = Ebean.find(Country.class,"NZ");
+// references automatically use the cache too
+Country countryRef = Ebean.getReference(Country.class,"NZ");
+// hit the country cache automatically via join
+Customer customer = Ebean.find(Customer.class, 1);
+Address billingAddress = customer.getBillingAddress();
+Country c2 = billingAddress.getCountry();
+{% endhighlight %} 
+<p>
+</p> 
+<b>ReadOnly
+</b> 
+<p>The readOnly attribute of @CacheStrategy is used to determine if by default Ebean should return the same instance from the cache (instances in the cache are readOnly and effectively immutable) or whether Ebean should create a new instance and copy the data from the cached bean onto the new instance.  
+</p> 
+<p>The readOnly attribute of @CacheStrategy is the "default" Ebean will use unless you explicitly specify the readOnly attribute of the query.
+</p> 
+<p> 
+</p> 
+<p>
+</p> 
+{% highlight java %}// explicitly state we want a MUTABLE COPY
+// … not the same instance as the one in cache
+// … a copy is made and returned instead
+Country countryCopy = Ebean.find(Country.class)
+.setReadOnly(false)
+.setId("NZ")
+.findUnique();
+// we can mutate this one
+countryCopy.setName("Nu Zilund");
+// save it, automatically maintaining the cache ...
+// evicting NZ from the Country bean cache and
+// clearing the Country query cache
+Ebean.save(countryCopy);
+{% endhighlight %} 
+<p>
+</p> 
+<h2>9.7: Manually specifing to use the bean cache
+</h2> 
+<p>If you don't use @CacheStrategy you can programmatically specify to use the bean cache via query.setUseCache(true);
+</p> 
+{% highlight java %}// explicitly state we want to use the bean cache
+Customer customer = Ebean.find(Customer.class)
+.setUseCache(true)
+.setId(7)
+.findUnique();
+// use readOnly=true to return the 'sharedInstance'
+// from the cache (which is effectively immutable)
+Customer customer = Ebean.find(Customer.class)
+.setUseCache(true)
+.setReadOnly(true)
+.setId(7)
+.findUnique();
+{% endhighlight %} 
+<p>
+</p> 
+<h2>9.8: Using the Query Cache
+</h2> 
+<p>To use the query cache you have to explicitly specify its use on a query.
+</p> 
+{% highlight java %}// use the query cache
+List&lt;Country&gt; list = Ebean.find(Country.class)
+.setUseQueryCache(true)
+.where().ilike("name", "New%")
+.findList();
+{% endhighlight %} 
+<p>The query cache is general y useful for returning lists that are very infrequently changed. These lists would often be used to populate drop down lists / combo boxes in user interfaces. 
+</p> 
+<p>If you are familiar with the term "Lookup Tables" or "Reference Tables" these are typical candidates for using cached queries. Some examples of lookup/reference tables could be, countries, currencies and order status.
+</p> 
+<b>Query cache lists are readOnly by default
+</b> 
+<p>
+</p> 
+{% highlight java %}// by default the lists returned from the query
+// cache are readOnly.  Use setReadOnly(false) to
+// return mutable lists
+List&lt;Country&gt; list = Ebean.find(Country.class)
+.setUseQueryCache(true)
+.setReadOnly(false)
+.where().ilike("name", "New%")
+.findList();
+{% endhighlight %} 
+<p>
+</p> 
+<h2>10: Id Generation 
+</h2> 
+<ul><li>DB Identity / Autoincrement</li>
+<li>DB Sequences</li>
+<li>UUID</li>
+<li>Custom ID Generation</li>
+</ul> 
+<p>There are 4 ways that ID's can be automatically generated for new Entities. This occurs when a entity is going to be inserted and it does not already have an Id value.
+</p> 
+<p>The first 3 options are highly recommended for 2 reasons.  
+</p> 
+<p>1) They are standard approaches that can also be used by other programs, stored 
+</p> 
+<p>procedures, batch loading jobs etc that could be written in other languages etc. That is, if you choose a custom ID Generation then this can make it more difficult to use other programs / tools to insert into the DB.
+</p> 
+<p>2) They support good concurrency – can you really do better?
+</p> 
+<p>Most Databases support Sequences or Identity/Autoincrement. DB2 and H2 support both.
+</p> 
+<h2>10.1: UUID Id Generation
+</h2> 
+<p>To use UUID's with Ebean all you need to do is use the UUID type for your id property. Ebean will automatically assign an appropriate UUID Id generator.
+</p> 
+{% highlight java %}@Entitypublic class MyEntity {
+@Id
+UUID id;
+    ...
+{% endhighlight %} 
+<p>
+</p> 
+<h2>10.2: DB Sequences / DB Autoincrement 
+</h2> 
+<p>Refer:  com.avaje.ebean.config.dbplatform.DatabasePlatform &amp; DbIdentity
+</p> 
+<p>For each database type (Oracle, MySql, H2, Postgres etc) there is a specific DatabasePlatform which defines whether the database supports sequences or autoincrement. This then defines whether DB sequences or DB Identity / Autoincrement will be used. This also provides a sequence generator specific to that database.
+</p> 
+<p>For DB sequences the NamingConvention is used to define the default name of the sequences. This name will be used unless the sequence name is explicitly defined via annotations.  
+</p> 
+<p>What this means is that, typical y you only need to the the @Id annotation unless you need to override a sequence name (when it doesn't match the naming convention).
+</p> 
+{% highlight java %}@Entity
+public class MyEntity {
+@Id
+Integer id;
+    ...
+{% endhighlight %} 
+<h2>10.3: Batched fetch of Db Sequences
+</h2> 
+<p>For performance reasons we don't want to fetch a sequence value each time we want an Id. Instead we fetch a 'batch' of sequences  (refer to ServerConfig setDatabaseSequenceBatchSize() ) - the default batch size is 20.
+</p> 
+<p>Also note that when the number of available Id's for a given sequence drops to half the batch size then another batch of sequences is fetched via a background thread.
+</p> 
+<p>For Oracle, Postgres and H2 we use Db sequences. It is worth noting that this al ows the use of JDBC batch statements (PreparedStatement.addBatch() etc) which is a significant performance optimization. You can global y turn on the use of JDBC batching via ServerConfig.setUsePersistBatching() … or you can turn it on for a specific Transaction. 
+</p> 
+<p>
+</p> 
+<h2>11: Mapping
+</h2> 
+<p><h2>11.1 Goal of Mapping</h2>
+</p> 
+<p><p>
+</p> 
+<p>The main goal of "Mapping" is to isolate the application code from the Database Schema.
+</p> 
+<p>This means that <i>some</i> changes can occur to the schema without breaking the application.
+</p> 
+<p>The application code can be written without reference to the specific table names, view names and column names. This means that your application can more easily withstand some unforseen changes.
+</p> 
+<p></p>
+</p> 
+<h2>11.2: JPA Mapping
+</h2> 
+<p>Ebean uses the same mapping as per the JPA specification. You can learn and use the same mapping annotations. This is general y a very good part of the specification and I'd expect this part of the specification to mostly stand the test of time.
+</p> 
+<h2>11.3: DDL Generation
+</h2> 
+<p>Ebean v2.0 introduces support for DDL generation.
+</p> 
+<p>The DDL the is generated is useful for agile development and testing. It is also useful to help get an understanding of the mapping.
+</p> 
+<p>For simple Databases the DDL generated will be sufficient but for large databases it is not really 'production quality'. For large Databases you will likely use it as a starting point. DBA's will want to add more control over physical aspects of Tables and Indexes (specify tablespaces etc to spread IO across disks, partition large tables, control freespace depending on the etc).
+</p> 
+<h2>11.4: Naming Convention
+</h2> 
+<p>Ebean has a Naming Convention API to map column names to property names. It also maps entity to table names and can take into account database schema and catalog if required.
+</p> 
+<p>
+</p> 
+<p><img src="ebean-userguide-49_1.png"/>
+</p> 
+<p>Refer to: com.avaje.ebean.config.NamingConvention
+</p> 
+<p>The default UnderscoreNamingConvention converts column names with underscores into normal java camel case property names (e.g. "first_name" maps to "firstName"). 
+</p> 
+<p>You can also use the MatchingNamingConvention or implement your own. 
+</p> 
+<h2>11.5: Example Database Design
+</h2> 
+<p>The following is a database design with some tables. It is a fairly typical Orders, Customers, Products design that I will use to il ustrate the Mapping.
+</p> 
+<p>
+</p> 
+<h2>11.6: Mapping Annotations
+</h2> 
+<h2>11.6.1:  Basics
+</h2> 
+<b>@Entity
+</b> 
+<p>This simply marks an Entity Bean. Ebean has the same restrictions as per the JPA spec with the entity beans requiring a default constructor and with properties following the java beans conventions (with getter and setter names).
+</p> 
+<b>@Table 
+</b> 
+<p>Here you can specify the table name that the entity bean will use. More specifical y this is the "base table" as an entity bean could have a number of "secondary" tables as well.
+</p> 
+<b>@Id and @EmbeddedId
+</b> 
+<p>Use one of these to mark the property that is the id property. You should use @Id if the id property is a simple scalar type (like Integer, String etc) and you should use @EmbeddedId if the id type is complex (an embedded bean).
+</p> 
+<b>@Column
+</b> 
+<p>Use this if the naming convention does not match the bean property name to the database column or if you need to use quoted identifiers. Otherwise it is not required.
+</p> 
+<b>@Lob
+</b> 
+<p>This marks a property that is mapped to a Clob/Blob/Longvarchar or Longvarbinary.
+</p> 
+<b>@Transient
+</b> 
+<p>This marks a property that is not persistent. 
+</p> 
+<h2>11.6.2:  Relationships
+</h2> 
+<b>Database Design and Normalisation
+</b> 
+<p>If you are familiar with Database design and normalisation then I believe the relationships will become clear fairly quickly. If you are not familiar then I'd recommend you take a look at these topics (a quick trip to wikipedia) as I believe they will help you a lot in this area of ORM mapping.
+</p> 
+<b>DB Foreign Keys and ORM Relationships
+</b> 
+<p>Assuming your DB has foreign keys and has been wel  designed then the ORM mapping should fol ow quite natural y. If you DB has a more "interesting" design then the ORM 
+</p> 
+<p>
+</p> 
+<p>mapping can be a lot more painful with more compromises.
+</p> 
+<b>One-to-Many relationship
+</b> 
+<p>This is probably the most common relationship so we will start with a One to Many relationship. The @OneToMany and the @ManyToOne represent the two ends of a relationship. This relationship typical y maps  directly to a Database Foreign Key constraint...
+</p> 
+<b>Database Foreign Key constraint 
+</b> 
+<p>A typical database design is ful  of "One to Many/Many to One" relationships implemented using a Foreign Key constraint. A foreign key constraint has an "imported" side and an "exported" side. 
+</p> 
+<p><i>"A Customer has many Orders"</i>
+</p> 
+<p><i>"An Order belongs to a Customer"</i>
+</p> 
+<p><i>The customer table "exports" its primary key to the order table</i>
+</p> 
+<p><i>The order table "imports/references" the customer table's primary key.</i>
+</p> 
+<p>A Foreign Key constraint can be viewed from the exported side (customer table) or the imported side (order table).
+</p> 
+<p>... @OneToMany and @ManyToOne map directly to this.
+</p> 
+<b>The Customer entity bean...
+</b> 
+<p>
+</p> 
+{% highlight java %}...
+@Entity
+@Table(name="or_customer")
+public class Customer {
+    ...
+    @OneToMany
+    List&lt;Order&gt; orders;
+The Order entity bean...
+...
+@Entity
+@Table(name="or_order")
+public class Order {
+    ...
+    @ManyToOne
+    Customer customer;
+{% endhighlight %} 
+<p>Because the @OneToMany and @ManyToOne are both mapped this is a "Bidirectional" relationship. You can navigate the object graph in either direction.
+</p> 
+<b>Unidirectional Relationships
+</b> 
+<p>To turn a Bidirectional relationship into a Unidirectional relationship you need to either remove the @OneToMany (Customer.orders property) or the @ManyToOne (Order.customer property).
+</p> 
+<b>Removing a OneToMany  - no problem
+</b> 
+<p>eg. Remove List&lt;Order&gt; from Customer
+</p> 
+<p>You can general y remove the OneToMany side of a relationship without any major issues. The issue being that you can not navigate the object graph in that direction.
+</p> 
+<p>Why remove a OneToMany? Sometimes the OneToMany side is not useful to the application or even dangerous if used. For example on Product there could be a List&lt;OrderDetail&gt; but that could be considered useless or even dangerous if it was navigated (and al  order details for a product where lazy loaded).
+</p> 
+<b>Removing a ManyToOne  - watch those inserts...
+</b> 
+<p>eg. Remove Customer from Order
+</p> 
+<p>If you remove a ManyToOne this effects how a bean is saved (specifically the insert). The reason is because it is the ManyToOne (importing) side of the relationship that holds the foreign key column (e.g. or_order table holds the customer_id foreign key column).
+</p> 
+<p><b>Q: </b>If the customer property is removed from the Order object how would you specify which customer placed an order when you create a new order?
+</p> 
+<p>In Database speak this translates to ... when inserting an order how is the customer_id column populated?
+</p> 
+<p>
+</p> 
+<p><b>A: </b>You have to use cascading save on the customer.orders and save the customer. Sounds like a pain... and it would be in this case... lets look at a more realistic case where you want to remove a ManyToOne...
+</p> 
+<p>eg. Remove Order from OrderDetail
+</p> 
+<p>Lets say you remove the Order property from the OrderDetail bean. Now lets say you want to write some code to add a OrderDetail to an Order (insert). How do you specify which Order it should go to?
+</p> 
+<b>"Turn on" cascade save on the @OneToMany side
+</b> 
+<p>
+</p> 
+{% highlight java %}@Entity
+@Table(name="or_order")
+public class Order {
+    ...
+// must cascade the save
+    @OneToMany(cascade=CascadeType.ALL)
+    List&lt;OrderDetail&gt; details;
+{% endhighlight %} 
+<p>
+</p> 
+<b>And save the order... which cascade saves the details
+</b> 
+<p>
+</p> 
+{% highlight java %}// create or fetch the order
+Order order = ...
+List&lt;OrderDetail&gt; details = new ArrayList&lt;OrderDetail&gt;();
+OrderDetail orderDetail = ...
+details.add(orderDetail);
+// set the new details...
+order.setDetails(details);
+// save the order... which cascade saves
+// the order details...
+Ebean.save(order);
+{% endhighlight %} 
+<p>So when the order is saved, because the @OneToMany relationship has cascade.ALL the save is cascaded to al  the order details.
+</p> 
+<p>Note that you can update OrderDetails individually (without relying on cascade save) but to insert a new OrderDetail we are relying on the cascading save. 
+</p> 
+<p>Removing a ManyToOne typical y reflects a strong "ownership" relationship.  The Order "owns" the OrderDetails, they are persisted as 
+</p> 
+<p>
+</p> 
+<p>one via cascade save. 
+</p> 
+<b>Managed Relationships = @OneToMany + cascade save
+</b> 
+<p>If cascade save is on a @OneToMany when the save is cascaded down from the 'master' to the 'details' Ebean will 'manage' the relationship.
+</p> 
+<p>For example, with the Order - OrderDetails relationship when you save the order Ebean will get the order id and make sure it is 'set' on all the order details. Ebean does this for both Bidirectional relationships and Unidirectional relationships.
+</p> 
+<p>What this means is that if your OrderDetails has an @ManyToOne Order property (its bidirectional) you do not need to set the order against each orderDetail when you use cascade save. Ebean will automatical y set the 'master' order to each of the details when you save the Order and that cascades down to the details.
+</p> 
+<b>@OneToMany Notes
+</b> 
+<p>When you assign a @OneToMany you typical y specify a mappedBy attribute. This is for Bi-directional relationships and in this case the "join" information is read from the other side of the relationship (meaning you don't specify any @JoinColumn etc on this side).
+</p> 
+<p>If you don't have a mappedBy attribute (there is no matching property on the other related bean) then this is a Unidirectional relationship. In this case you can specify a @JoinColumn if you wish to override the join column information from the default). 
+</p> 
+{% highlight java %}@Entity
+@Table(name="s_user")
+public class User implements Serializable {
+// unidirectional …
+// … can explicitly specify the join column if needed
+    @OneToMany
+@JoinColumn(name="pref_id")
+    List&lt;Preference&gt; preferences;
+// bi-directional
+// … join information always read from the other side
+    @OneToMany(mappedBy="userLogged")
+    List&lt;Bug&gt; loggedBugs;
+{% endhighlight %} 
+<p>
+</p> 
+<b>One-to-One relationship
+</b> 
+<p>A One-to-One relationship is exactly the same as a One-to-Many relationship except that the many side is limited to a maximum of one. 
+</p> 
+<p>That means that one of the @OneToOne sides operates just like a @ManyToOne (the imported side with the foreign key column) and the other @OneToOne operates just like a @OneToMany (exported side).
+</p> 
+<p>So you put the mappedBy on the 'exported side' – as if it was a @OneToMany.
+</p> 
+<p>From a Database perspective a One to One relationship is implemented with a foreign key constraint (like one to many) and adding a unique constraint on the foreign key column. This has the effect of limiting the "many" side to a maximum of one (has to be unique). 
+</p> 
+<b>Many-to-Many relationship
+</b> 
+<p>You are probably aware that there are no Many to Many relationships in a physical database design. These are implemented with an intersection table and two One to Many relationships.
+</p> 
+<p>Lets look at an example...
+</p> 
+<p><i>A User can have many Roles</i>
+</p> 
+<p><i>A Role can be assigned to many Users</i>
+</p> 
+<p>
+</p> 
+<p><img src="ebean-userguide-56_1.png"/>
+</p> 
+<p><i>A Many to Many between user and role </i>
+</p> 
+<p>In the database diagram above there is an intersection table cal ed s_user_role. This represents a logical many to many relationship between user and role.
+</p> 
+<p>Q: When is a Many to Many better represented as two One to Many relationships?
+</p> 
+<p>A: If there is ever an additional column in the intersection table then you should consider changing this from a Many to Many to two One to Many's and including the intersection table in the model.
+</p> 
+<p>One way to think of this is that each @ManyToMany operates just like it was a @OneToMany. The relationship must be "managed" meaning Ebean must take care of inserting into and deleting from the intersection table.
+</p> 
+<p>The way this works is that any additions or removables from the many list/set/map are noted. These become inserts into and deletes from the intersection table.
+</p> 
+{% highlight java %}@Entity
+@Table(name="s_user")
+public class User implements Serializable {
+...
+    @ManyToMany(cascade=CascadeType.ALL)
+    List&lt;Role&gt; roles;
+@Entity
+@Table(name="s_role")
+public class Role {
+...
+    @ManyToMany(cascade=CascadeType.ALL)
+    List&lt;User&gt; users;
+{% endhighlight %} 
+<p>The intersection table name and foreign key columns can default or be specified by @JoinTable etc. 
+</p> 
+<p>The following code shows a new role added to a user.
+</p> 
+{% highlight java %}User user = Ebean.find(User.class, 1);
+List&lt;Role&gt; roles = user.getRoles();
+Role role = Ebean.find(Role.class, 27);
+// adding a role to the list...this is remembered and will
+// result in an insert into the intersection table
+// when save cascades...
+roles.add(role);
+// save cascades to roles... and in this case
+// results in an insert into the intersection table
+Ebean.save(user);
+{% endhighlight %} 
+<p>Note that if a role was removed from the list this would result in an appropriate delete from the intersection table.
+</p> 
+<p>
+</p> 
+<h2>11.6.3:  @Formula
+</h2> 
+<p>Formula can be used to get read only values using SQL Literals, SQL Expressions and SQL Functions.
+</p> 
+<p>With a Formula the <i><b>${ta}</b></i> is a special token to represent the table alias. The table alias is dynamical y determined by Ebean and you can put the ${ta} in the select or join attributes.
+</p> 
+<b>A SQL Expression
+</b> 
+<p>Example: The caseForm field using a SQL case expression
+</p> 
+{% highlight java %}...
+@Entity
+@Table(name="s_user")
+public class User {
+    @Id
+    Integer id;     
+@Formula(select="(case when ${ta}.id &gt; 4 then 'T' else 'F' end)")
+boolean caseForm;
+...
+{% endhighlight %} 
+<p>Note the <b>${ta}</b> in place of the table alias
+</p> 
+<p>Note in this deployment 'T' and 'F' are mapped to boolean values.
+</p> 
+{% highlight java %}A SQL Function
+@Formula(select="(select count(*) from f_topic _b where _b.user_id = 
+${ta}.id)")
+int countAssiged;
+{% endhighlight %} 
+<p>The formula properties can be used as normal properties. This includes in query select and where expressions.
+</p> 
+{% highlight java %}// include the countAssigned property
+Query&lt;User&gt; query = Ebean.createQuery(User.class);
+query.select("id, name, countAssiged");
+query.fetch("topics");
+List&lt;User&gt; list = query.findList();
+{% endhighlight %} 
+<p>The SQL generated from the query above is:
+</p> 
+{% highlight java %}&lt;sql summary='[app.data.User]'&gt;
+select u.id, u.name, 
+(select count(*) from f_topic _b where _b.user_id = u.id)
+from s_user u
+&lt;/sql&gt;
+{% endhighlight %} 
+<p>Note the <i><b>"u"</b></i> in the sql has replaced the ${ta} [table alias placeholder] specified in the select attribute of the formula.
+</p> 
+<p><i><b>It is also worth noting that this is potentially not great SQL!!!</b></i> You should check SQL in this form (get the explain plan for the query – get your DBA to review the sql etc) but there is a good chance the sub query (select count(*) ... _b.user_id = u.id) will effectively execute for each row returned. If that is the case the query above can quickly become expensive and you may find you have an unhappy DBA .
+</p> 
+<p>The above can be re-written to use a view (if one exists). The benefit is that we can use a join rather than a subquery which can perform much better from a database perspective.
+</p> 
+{% highlight java %}// VIEW: vw_topic_aggr
+// Let's say there is a view base on this SQL.
+// It is typically more performant to JOIN
+// to a view rather than use a subquery
+create view vw_topic_aggr as
+select user_id, max(id) as topic_max, count(*) as topic_count
+from f_topic
+group by user_id
+{% endhighlight %} 
+<p>And use the <b>join</b> attribute of @Formula
+</p> 
+<p>
+</p> 
+{% highlight java %}@Formula(
+  select="_b${ta}.topic_count",
+  join="join vw_topic_aggr
+ as _b${ta} on _b${ta}.user_id = id")
+  int countWithJoin;
+{% endhighlight %} 
+<p>Now, if the view does not exist we can do something similar ...
+</p> 
+<p>In this next @Formula the join attribute contains the select effectively replacing the vw_topic_aggr view with (select user_id, max(id) as topic_max, count(*) as topic_count from f_topic group by user_id).
+</p> 
+{% highlight java %}@Formula(
+  select="_b${ta}.topic_count",
+  join="join (select user_id, max(id) as topic_max, count(*) as 
+topic_count from f_topic group by user_id) as _b${ta} on _b$
+{ta}.user_id = id")
+int countWithJoin;
+Query&lt;User&gt; query = Ebean.createQuery(User.class);
+query.select("id, name, countWithJoin");
+List&lt;User&gt; list = query.findList();
+{% endhighlight %} 
+<p>Results in the following SQL: - <i>will generally perform better than the subquery</i>
+</p> 
+{% highlight java %}&lt;sql summary='[app.data.User]'&gt;
+select u.id, u.name, _bu.topic_count
+from s_user u
+join (select user_id, max(id) as topic_max, count(*) as topic_count
+from f_topic group by user_id) as _bu on _bu.user_id = id
+&lt;/sql&gt;
+{% endhighlight %} 
+<p>    
+</p> 
+<p>It is also worth noting that the formula fields can be used in where expressions.
+</p> 
+<p>
+</p> 
+<p>Example: where countWithJoin &gt; 1
+</p> 
+<p><b>Query&lt;User&gt; query = Ebean.</b>
+</p> 
+{% highlight java %}createQuery
+(User.class);
+query.select("id, name, countWithJoin");
+// using the formula field in the where
+query.where().gt("countWithJoin", 1);
+List&lt;User&gt; list = query.findList();
+{% endhighlight %} 
+<p>Resulting SQL:
+</p> 
+{% highlight java %}&lt;sql summary='[app.data.User]'&gt;
+select u.id, u.name, _bu.topic_count
+from s_user u
+join (select user_id, max(id) as topic_max, count(*) as topic_count
+from f_topic group by user_id) as _bu on _bu.user_id = id
+where _bu.topic_count &gt; ?
+&lt;/sql&gt;
+{% endhighlight %} 
+<p>
+</p> 
+<h2>11.6.4:  @EnumMapping
+</h2> 
+<p>This is an Ebean specific annotation (not part of JPA) for mapping Enum's to database values. The reason it exists is that IMO the JPA approach for mapping of Enums is highly dangerous (in the case of Ordinal mapping) or not very practical (in the case of String mapping).
+</p> 
+<p>Lets take the example of this Enumeration:
+</p> 
+{% highlight java %}public enum UserStatus {
+ACTIVE, INACTIVE, NEW
+}
+{% endhighlight %} 
+<p>
+</p> 
+<b>Enum Ordinal Mapping is Dangerous
+</b> 
+<p>In my opinion JPA Ordinal Mapping for Enum's is very dangerous (So dangerous I highly recommend avoiding it). The reason is because the ordinal values for Enum depends on the order in which they appear. 
+</p> 
+{% highlight java %}public class TestStatus {
+public static void main(String[] args) {
+int ord0 = UserStatus.ACTIVE.ordinal();
+int ord1 = UserStatus.INACTIVE.ordinal();
+int ord2 = UserStatus.NEW.ordinal();
+// 0, 1, 2
+System.out.println("ord 0:"+ord0+" 1:"+ord1+" 2:"+ord2);
+String str0 = UserStatus.ACTIVE.name();
+String str1 = UserStatus.INACTIVE.name();
+String str2 = UserStatus.NEW.name();
+// "ACTIVE", "INACTIVE", "NEW"
+System.out.println("str 0:"+str0+" 1:"+str1+" 2:"+str2);
+}
+}
+OUTPUT:
+ord 0:0 1:1 2:2
+str 0:ACTIVE 1:INACTIVE 2:NEW
+{% endhighlight %} 
+<p>
+</p> 
+<p>The problem is that if you change the order of the Enum elements such as in this example (DELETED is now first with Ordinal value of 0) ... 
+</p> 
+{% highlight java %}public enum UserStatus {
+DELETED, ACTIVE, INACTIVE, NEW
+}
+{% endhighlight %} 
+<p>With the above code the Ordinal values for ACTIVE, INACTIVE and NEW have all changed. This is a very subtle change and now every status existing in the database will be incorrectly represented in the application. Hopefully this issue would be picked up quickly but there could be situations where this subtle data issue is not picked up before a real disaster has occured.
+</p> 
+<b>Enum String mapping is limited
+</b> 
+<p>It is more likely that your DBA would prefer to save space by mapping this to a VARCHAR(1) column and use "A", "I", "N" and "D" as codes to represent ACTIVE, INACTIVE, NEW and DELETED. 
+</p> 
+<p>The issue with the String mapping is that more frequently than not the names of the Enumeration elements will have to be comprimised to short less-meaningful names to map into DB values or your DBA will be unhappy with long wasteful values.
+</p> 
+{% highlight java %}@EnumValue
+public enum UserStatus {
+@EnumValue("D")
+DELETED, 
+@EnumValue("A")
+ACTIVE, 
+@EnumValue("I")INACTIVE, 
+@EnumValue("N")NEW
+}
+{% endhighlight %} 
+<p>
+</p> 
+<p>With EnumValue (Ebean specific annotation) you explicitly specify the value map the entry to. This Annotation has been logged with the Eclipselink project in the hope it makes it's way into the JPA spec.
+</p> 
+<p>
+</p> 
+<h2>12: Transactions
+</h2> 
+<h2>12.1: Transaction Logging
+</h2> 
+<p>Ebean also has transaction logging built in (SQL, bind variables etc).
+</p> 
+<p>The transaction logs are useful to fol ow the behaviour of JDBC batching, cascading behaviour and identify when lots of lazy loading is being invoked.
+</p> 
+<p>Also, if you are developing relatively complex batch processing you should note that you can <i><b>add your own comments</b> so that they <b>appear in the transaction log</b></i>. This makes it easier to relate the statements in the transaction log back to your application code.
+</p> 
+{% highlight java %}...
+try {
+Ebean.execute(new TxRunnable() {
+public void run() {
+  // this comment appears in the transaction log
+  Ebean.currentTransaction().log("-- saving holder first time");
+  Ebean.save(holder);
+      ...
+{% endhighlight %} 
+<p>
+</p> 
+<p>You can control what is logged and the level of detail via ebean.properties. 
+</p> 
+{% highlight java %}## Use java util logging to log transaction details
+#ebean.loggingToJavaLogger=true
+## General logging level: (none, explicit, all)
+ebean.logging=all
+## location of transaction logs
+ebean.logging.directory=logs
+#ebean.logging.directory=${catalina.base}/logs/trans
+## Specific Log levels (none, summary, binding, sql)
+ebean.logging.iud=sql
+ebean.logging.query=sql
+ebean.logging.sqlquery=sql
+{% endhighlight %} 
+<p>In your early stages of using Ebean you should find where the transaction logs are going so that you can see exactly what Ebean is doing.
+</p> 
+<p>
+</p> 
+<p>When Ebean starts it will output to the log the directory where the transaction logs will get written to.
+</p> 
+{% highlight java %}...
+INFO: Entities enhanced[0] subclassed[38]
+INFO: Transaction logs in: C:/apps/tomcat6/logs/trans
+...
+{% endhighlight %} 
+<p>
+</p> 
+<h2>12.2: Implicit Transactions
+</h2> 
+<p>If you do execute a query or use save() or delete() without a transaction (without a @Transaction annotation, TxRunnable , beginTransaction() etc) then Ebean will create an "implicit" transaction. 
+</p> 
+<p>Ebean first checks to see if there is a current transaction, and if there is not one it creates one, performs the action (query, save() delete() etc) and then commits the transaction automatically at the end (or performs a rollback if there was an error).
+</p> 
+{% highlight java %}// execute a query will create an implicit
+// transaction if there is no current Transaction
+List&lt;User&gt; users = 
+Ebean.find(User.class)
+.fetch("customer")
+.where().eq("state", UserState.ACTIVE)
+.findList();
+// execute a save will create an implicit
+// transaction if there is no current Transaction
+Ebean.save(user);
+{% endhighlight %} 
+<p>Following are ways to explicitly demarcate your transactions via @Transactional annotation and various programmatic approaches (TxRunnable etc).
+</p> 
+<h2>12.3: @Transactional annotation
+</h2> 
+<p>The Transaction annotation is only usable if you use "Enhancement" (via the IDE Plugin, ANT task or javaagent) . 
+</p> 
+<p>The transformer (enhancement code) that enhances Entity beans will also by default look for any class that has a @Transactional annotation and enhances those classes/methods 
+</p> 
+<p>
+</p> 
+<p>adding in the appropriate transactional scope management (create a transaction if required, commit or rollback as necessary, suspend and resume an existing transaction if required etc). 
+</p> 
+<p>The annotation follows the Spring approach of supporting specific transaction isolation levels,  explicit rollback/no rollback of exceptions, and read only indicator. These are currently missing from the standard EJB annotation.
+</p> 
+<b>EJB: No Rollback of Checked Exceptions
+</b> 
+<p>It seems counter-intuitive but in EJB (and Spring decided follow the EJB approach) a checked exception does not actually cause a rollback to occur.  So if you had a method that is Transactional and throws a checked exception (not a RuntimeException)... then it <i><b>would NOT rollback</b></i> if that checked exception was thrown.
+</p> 
+<b>Ebean: configurable ... default is to rollback on any Exception
+</b> 
+<p>With Ebean this is not the default behaviour and instead Ebean by default will rollback on any Exception (Checked or Runtime). You can make Ebean follow the EJB behaviour by setting ebean.transaction.rollbackOnChecked=false.
+</p> 
+<b>## Ebean default is rollbackOnChecked=true## set this to false to get EJB behaviourebean.transaction.rollbackOnChecked=false
+</b> 
+<p>Put the @Transactional annotation on a method. Via Enhancement (IDE Plugin, javaagent or ANT task) Ebean enhances the method adding the transaction management around the method invocation.
+</p> 
+{% highlight java %}...
+public class MyService {
+@Transactional
+public void runFirst() throws IOException {
+System.out.println("runFirst");
+User u1 = Ebean.find(User.class, 1);
+runInTrans();
+}
+@Transactional(type = TxType.REQUIRES_NEW)
+{% endhighlight %} 
+<p>
+</p> 
+{% highlight java %}public void runInTrans() throws IOException {
+System.out.println("runInTrans ...");
+User u1 = Ebean.find(User.class, 1);
+...
+{% endhighlight %} 
+<p>This supports nested transactions (as does TxRunnable and TxCallable) and makes it easy to demarcate transactions.
+</p> 
+<p>You can also put @Transactional on interface methods, and classes implementing the interface will inherit the transactional definitions from the interface. 
+</p> 
+<p>Note that the precedence of reading specific @Transactional attributes is that it first uses the annotation attributes from the local method (if there is one), if not then it tries the local class level (if there is one), then the interface method (if there is one), then the interface class level (if there is one). 
+</p> 
+<p><i><b>BUG: If you are using the eclipse IDE enhancer plugin, then you should  note there is a bug. </b></i>
+</p> 
+<p><i><b>If you change the @Transactional annotation on an interface, this  change is not reflected in the implementation classes until they are  saved/compiled. Changing the interface will not necessarily force a  save/comile of all the classes that implement that interface. </b></i>
+</p> 
+<p><i><b>The workaround for this is that after you change a @Transactional  annotation on an interface to make sure all implementation classes of  that interface are saved/compiled perform a build all.</b></i>
+</p> 
+<p>
+</p> 
+<h2>12.4: Programatic: TxRunnable and TxCallable
+</h2> 
+<p>You can get the same type of functionality as @Transactional programmatically via the TxRunnable and TxCallable. 
+</p> 
+{% highlight java %}public void myMethod() {
+  ...
+  System.out.println(" Some code in myMethod...");
+  // run in Transactional scope... 
+  Ebean.execute(new TxRunnable() {
+public void run() {
+// code running in "REQUIRED" transactional scope
+// ... as "REQUIRED" is the default TxType
+System.out.println(Ebean.currentTransaction());
+// find stuff...
+User user = Ebean.find(User.class, 1);
+...
+// save and delete stuff...
+Ebean.save(user);
+Ebean.delete(order);
+...
+}
+});
+System.out.println(" more code in myMethod...");
+}
+{% endhighlight %} 
+<p>You can specify a TxScope with options such as isolation level and rollback / noRollback for specific Exception types.
+</p> 
+{% highlight java %}TxScope txScope = TxScope
+.requiresNew()
+.setIsolation(TxIsolation.SERIALIZABLE)
+.setNoRollbackFor(IOException.class);
+Ebean.execute(txScope, new TxRunnable() {
+public void run() {
+...
+{% endhighlight %} 
+<p>
+</p> 
+<p>You can use a mixture of @Transaction and TxRunnable / TxCallable with nesting (transactional methods calling other transactional methods etc).  They handle the suspending and resuming of nested transactions for you.
+</p> 
+<p>TxType has values REQUIRED (the default), REQUIRES_NEW, MANDATORY, SUPPORTS, NOT_SUPPORTS, NEVER.  These are an exact match of the EJB TransactionAttributeTypes.
+</p> 
+<h2>12.5: Programatic: beginTransaction()
+</h2> 
+<p>You can also write transaction demarcation code in a more "traditional" way using a try finally block.
+</p> 
+{% highlight java %}Ebean.beginTransaction();
+try {
+User u = Ebean.find(User.class, 1);
+...
+Ebean.commitTransaction();
+} finally {
+Ebean.endTransaction();
+{% endhighlight %} 
+<p>}
+</p> 
+<p>The code above will generally use a ThreadLocal to hold the Transaction to begin, commit and end (end will perform a rollback if required). This makes it easy to use but the limitation is that you can only have one active transaction per EbeanServer (The above code is using Ebean (rather than EbeanServer) so it is a transaction against the <i>"default" </i>EbeanServer).
+</p> 
+<h2>12.6: Programmatic: createTransaction() 
+</h2> 
+<p><i>With al  the previous transaction approaches Ebean helps manage the transaction. The limitation this imposes is that you can only have one active transaction per EbeanServer  per Thread.</i>
+</p> 
+<p><i>You can have "nested" transactions when you use REQUIRES_NEW. The "outer" transaction is suspended – the method is run with its NEW transaction and then the "outer" transaction is resumed. With "nested" transactions you can only use 1 transaction </i>
+</p> 
+<p>
+</p> 
+<p><i>at a time – there is only 1 active transaction at any given moment.</i>
+</p> 
+<p>There is extra API on the EbeanServer for using Transactions more explicitly. These transactions are created and not managed by Ebean – so you can have any number of them but you need to manage them yourself (make sure you commit or rollback). 
+</p> 
+<p>In practice the easiest way to do this is to use a try finally block and have transaction.end() in the finally block. The transaction.end() will perform a rollback but only if the transaction has not already been committed.
+</p> 
+{% highlight java %}// explicit transaction API is on EbeanServer
+// get the default server...
+EbeanServer server = Ebean.getServer(null);
+// create a transaction not "managed" by Ebean
+Transaction transaction = server.createTransaction();
+try {
+Query&lt;User&gt; query = ...;
+// query using explicit transaction
+server.findList(query, transaction);
+User user = ...;
+// save using explicit transaction
+server.save(user, transaction);
+// delete using explicit transaction
+server.delete(order, transaction);
+transaction.commit();
+} finally {
+    // rollback if required
+transaction.end();
+}
+{% endhighlight %} 
+<p>Using your own explicit transactions like the code above means that you are not restricted to one transaction per EbeanServer per Thread, but it does mean you need to manage the transaction making sure you commit or rollback – otherwise the transaction may be lost resulting in a connection pool leak.
+</p> 
+<p>
+</p> 
+<h2>12.7: Spring Transactions
+</h2> 
+<p>The ebean-spring module includes integration into Spring transaction managers. 
+</p> 
+<p>This means that you can use a Spring Transaction Manager to control the transactions and Ebean will use those transactions. Ebean registers with Spring's TransactionSynchronizationManager and is notified off commits and rollbacks – this enables Ebean to automatical y manage its server caches and invoke listeners etc so there are no limitations in using the Spring TransactionManager with Ebean.
+</p> 
+<p>
+</p> 
+<h2>13: Data Types
+</h2> 
+<ul><li>Compound Types</li>
+<li>Scalar Types</li>
+<li>Enum</li>
+<li>Boolean</li>
+<li>Date / Timestamp / util Date / util Calender</li>
+</ul> 
+<p>Defining / Registering a new Scalar Type 
+</p> 
+<p>
+</p> 
+<h2>14: Field Access and Property Access
+</h2> 
+<p>Field and Property access are the two ways in which a field/property is managed/intercepted. What this means is that the ORM needs to intercept the reading or writing of either Fields or Properties.
+</p> 
+<p>An ORM does this interception to provide lazy loading and dirty checking functionality and an ORM achieves this using either Enhancement or Subclass generation (Subclass generation is also referred to as "Proxy classes").
+</p> 
+<p>To explain Field Access and Property Access I'll use an example focusing on a single field (in this case "firstName") and how Property Access and Field Acccess works in Ebean.
+</p> 
+{% highlight java %}...
+@Entity
+public class Person {
+@Id
+int id;
+String firstName;
+String lastName;
+...
+// An extra method... NOT a getter...
+// here to highlight the difference between
+// Field and Property Accesspublic String getFullName() {
+return firstName + " " + lastName;
+}
+public String getFirstName() {
+return firstName;
+}
+public void setFirstName(String firstName) {
+this.firstName = firstName;
+}
+// getters and setters for id and lastName not shown...
+...
+{% endhighlight %} 
+<p>
+</p> 
+<h2>14.1: Property Access
+</h2> 
+<p>By "Property" we really mean a Java Bean Property. In the case of the "firstName" property this means the related getter and setter methods of getFirstName() and setFirstName(...). Refer to the Java Bean naming convention for clarification.
+</p> 
+<p>With Property Access you <i><b>MUST</b></i> have a setter and a getter.
+</p> 
+<p>With Property Access <i><b>ONLY</b></i> the getter and setter are intercepted. If you use the field in other methods then access to that field is not intercepted/managed (See the getFullName() method as an example).
+</p> 
+<h2>14.1.1:  Property Access with Ebean ...
+</h2> 
+<p>
+</p> 
+{% highlight java %}...
+public String getFullName() {
+// not getter or setter so NOT intercepted...
+return firstName+" "+ lastName;
+}
+public String getFirstName() {
+_ebean_intercept.preGetter("firstName");
+return firstName;
+}
+public void setFirstName(String newValue) {
+  _ebean_intercept.preSetter("firstName", newValue, getFirstName());
+  this.firstName = newValue;
+}
+{% endhighlight %} 
+<p>This is an example of how Ebean modifies/generates code to support "property access" (NB: other ORMs could generate quite different code).
+</p> 
+<p>The modified/generated class now has a <i><b>_ebean_intercept</b></i> field.
+</p> 
+<p>In calling getName() the preGetter() method is cal ed on the intercept field and this will invoke lazy loading if required.
+</p> 
+<p>In calling setName() getName() is called which in turn can invoke lazy loading. The getName() returns the "Old Value" / "Previous Value" of the name. The preSetter() method is called on the intercept and will maintain the "Dirty Checking" information.
+</p> 
+<p>If your entity beans just have getter and setter methods they are wel  suited to property access. From a design perspective they may also be cal ed "Anemic" in the sense that 
+</p> 
+<p>
+</p> 
+<p>they don't have any logic and can almost be viewed as pure data. 
+</p> 
+<h2>14.2: Field Access
+</h2> 
+<p>Field access in general is implemented via bytecode Enhancement (Also refered to as Weaving and Transformation).
+</p> 
+<p>The class bytes are modified replacing the GETFIELD and PUTFIELD bytecode cal s to "persistent fields" with method calls. 
+</p> 
+<p>With Ebean Field access looks something like this... (note: other ORMs could generate quite different code)
+</p> 
+{% highlight java %}public String getFullName() {
+// GETFIELD firstName replaced...
+return _ebean_getFirstName()+" "+_ebean_getLastName();
+}
+public String getFirstName() {
+// GETFIELD firstName replaced
+return _ebean_getFirstName();
+}
+public void setFirstName(String newValue) {
+// PUTFIELD firstName replaced
+_ebean_setFirstName(newValue);
+}
+// new method generated by Ebean
+// used to replace GETFIELD firstName
+String _ebean_getFirstName() {
+_ebean_intercept.preGetter("firstName");
+return this.firstName;
+}
+// new method generated by Ebean
+// used to replace PUTFIELD firstName
+void _ebean_setFirstName(String newValue) {
+String currentValue = _ebean_getFirstName();
+_ebean_intercept.preSetter("firstName", newValue, currentValue);
+this.firstName = newValue;
+}
+{% endhighlight %} 
+<p>With Field access it actually doesn't matter where the field is used the GETFIELD and PUTFIELD byte code instructions are replaced. It is important to note that in the example 
+</p> 
+<p>
+</p> 
+<p>above the getFullName() method is also modified to support the interception/mangement by the ORM.
+</p> 
+<p>Unlike property access field access <i><b>does not require</b></i> the getter or setter to even exist – they can be removed if you want.   
+</p> 
+<p>Essential y with Field access you can write whatever code you like (within reason) and it will behave as expected (ORM interception occuring as and how you would expect).
+</p> 
+<h2>14.2.1:  JPA – Choose access approach on a per Field / Property basis
+</h2> 
+<p>With JPA you choose between field or property access on a per field / property basis. If you put the annotation on the field this implies that you want field access and if you put the annotation on the associated getter method of the property then you should get property access.
+</p> 
+<p><i><b>Ebean does not work this way!!!</b></i>
+</p> 
+<h2>14.2.2:  Ebean – Field vs Property access
+</h2> 
+<p>Ebean has not fol owed the JPA approach. With Ebean you get Field Access when you use Enhancement and you get Property Access when you use Subclassing.
+</p> 
+<p>The reason for this comes down to...
+</p> 
+<ul><li>Keeping things simple</li>
+<li>Field Access is the preferred approach </li>
+<li>Subclassing approach introduces security / visibility issues for Field Access </li>
+</ul> 
+<p>In fact when building Ebean v0.9.8 I was personally pretty keen to do away with Property access altogether. This would have meant also removing support for the Subclassing approach. This would have meant making Ebean internal y simplier... 
+</p> 
+<p>... but I got talked out of it...
+</p> 
+<p>There are a few downsides to Field Access.
+</p> 
+<ul><li>Serialization: Your entity beans now include and depend on Ebean objects. Where you deserialize them you will need some Ebean classes in you class path.</li>
+<li>Using JAVAAGENT or ANT or ...  to support the enhancement can be a pain. Ebean has tried to make this as simple and robust as possible. </li>
+<li>Java Web Start does not support JAVAAGENT. However, you could enhance the classes at build time using an ANT task.</li>
+</ul> 
+<p>
+</p> 
+<h2>14.2.3:  Ebean interception notes
+</h2> 
+<b>Id Interception
+</b> 
+<p>Id fields/properties are not intercepted ever (either for reading or writing). That is, getting or setting an ID will never invoke lazy loading or cause the entity to be marked as dirty.
+</p> 
+<b>OneToMany and ManyToMany Interception
+</b> 
+<p>The List Set and Map persistent properties are not intercepted when they are being set. That is, setting a associated many property does not invoke lazy loading or mark the entity as dirty. 
+</p> 
+<p>When you get a entity back from a query every associated many property (List Set or Map) will have a 'proxy' in place. It is not until you invoke a method on the List Set or Map proxy that lazy loading of that proxy will occur.
+</p> 
+<p>A reference object (obtained by Ebean.getReference()) will lazy load the entity bean if a List Set or Map associated many property is read (via getter etc).
+</p> 
+<b>toString() interception
+</b> 
+<p>No interception is invoked by a toString() method. The reason for this decision is that toString() is often invoked by an IDE while running a debugger – in the past this has lead to confusion to have lazy loading being invoked accidental y in this fashion.  
+</p> 
+<b>equals() and hashCode() generation
+</b> 
+<p>If your entity bean does not have a equals() or hashCode() method then one will be generated for you based on the identity property using the "" technique.
+</p> 
+<p>The generated equals() or hashCode() methods do not invoke lazy loading. 
+</p> 
+<b>@Transient on methods
+</b> 
+<p>If you are using Ebean enhancement (Field Access) then you can put the @Transient annotation on a method and it is <i><b>NOT</b></i> intercepted. Specifically the method is left exactly as it is (rather than having the GETFIELD PUTFIELD byte codes replaced with intercepted method cal s).
+</p> 
+<p>This is an Ebean extension to the JPA spec. This enables you to write a method on an entity bean that you know will not have its field access intercepted.
+</p> 
+<h2>14.2.4:  Rob Opinion: The future is Field Access... lets make it work
+</h2> 
+<p>I'm a fan of Field Access in that a developer can write their entity bean however they like (except Ebean still requires a default constructor). You can write any type of business logic into your Entity bean and it will work correctly (in terms of ORM lazy loading and dirty 
+</p> 
+<p>checking).
+</p> 
+<p>Enhancement is the natural way to support field access so I believe it's Ebean's job to make Enhancement easy work for the developers (ANT tasks, IDE Integration as well as JAVAAGENT support).
+</p> 
+<p><b>Q:</b> JPA supports the mixing of Field and Property access on the same entity bean. will Ebean look to support this?
+</p> 
+<p><b>A:</b> No. If you can do field access then you should. On the web there is mention of benefits to using Property access such as performance and type conversion benefits. None of these apply to Ebean. I see no justification or benefits to mixing the access type but I do see problems and confusion, so there is no plan to mix the access types on a single entity bean.
+</p> 
+<p><b>Q:</b> So why does Ebean support Property Access again?
+</p> 
+<p><b>A:</b> Because Ebean supports the Subclassing approach (also known as "Dynamic Proxy approach"). The Subclassing approach lends itself to Property access due to the fact that the generated subclass is defined in a different ClassLoader to the original Class. This means that in a normal java environment that generated subclass can not access the non-public fields of the original class. 
+</p> 
+<p><b>Q:</b> How does the enhancement work for with Groovy or Scala entity beans?
+</p> 
+<p><b>A:</b> You can use Ebean enhancement on Groovy or Scala beans. Note this includes support for Scala's properties (which don't fol ow the Java Bean Spec getter setter method naming conventions). Ebean can tel  if it is a Groovy bean or Scala bean and take that into account as needed.
+</p> 
+<p>
+</p> 
+<h2>15: Enhancement and Subclass Generation
+</h2> 
+<p>There are two main techniques used by Java ORM vendors to support their features.
+</p> 
+<p>1. Enhancement (aka Weaving) – using a javaagent or an ANT task etc to enhance 
+</p> 
+<p>the classes prior to class loading (at load time or build time). 
+</p> 
+<p>2. Subclass Generation (aka Dynamic Proxy) - Using a ClassLoader internal to the 
+</p> 
+<p>ORM and generating Subclasses of your entity beans dynamically (also known as the "Dynamic Proxy" approach). 
+</p> 
+<p>Ebean supports both approaches.
+</p> 
+<p>Both of these approaches have their pros and cons. This section is aimed at explaining the two approaches and how they work in Ebean so that you can make an informed choice.
+</p> 
+<p>Ebean supports Enhancement / Weaving  via javaagent, ant task and an Eclipse IDE plugin. When Ebean starts up Ebean will check if the entity classes are enhanced and if not will automatical y generate a Subclass and use that instead.
+</p> 
+<p><i><b>Rob Opinion:</b></i> I believe the enhancement approach will be the better approach over the long term with less restrictions on the code. You don't need getters or setters and enhanced classes allowing any logic to be put into the entity beans (you need to be more careful with the Subclass generation approach).
+</p> 
+<h2>15.1: Why are these techniques needed?  
+</h2> 
+<p>Al  the Java ORM's that I am aware of need this to support "Lazy Loading" and that includes Ebean.
+</p> 
+<p>In addition to that Ebean (and some other ORMs) use these techniques to support "Dirty Checking" / "Optimistic Concurrency Checking". That is, detecting when an entity bean has been modified (made dirty) and maintaining original values to support Optimistic Concurrency Checking.
+</p> 
+<p>In short, ORMs use these techniques to intercept cal s to getters, setters and other methods to magical y invoke lazy loading as required and maintain "Dirty Checking" information. These techniques (Enhancement and Subclass generation) enable this magic to occur.
+</p> 
+<h2>15.2:  Why are these techniques popular?
+</h2> 
+<p>The reason this is a popular approach is that your entity beans do not need to implement any special interface or extend any special class. 
+</p> 
+<p>
+</p> 
+<p>In this example Person does not extend a special class or implement a special interface.
+</p> 
+{% highlight java %}package model;
+import java.sql.Date;
+import javax.persistence.Entity;import javax.persistence.Id;
+@Entity
+public class Person {
+@Id
+int id;
+String firstName;
+String lastName;
+Date dob;
+public int getId() {
+return id;
+}
+public void setId(int id) {
+this.id = id;
+}
+public String getFirstName() {
+return name;
+}
+public void setFirstName(String name) {
+this.name = name;
+}
+...
+}
+{% endhighlight %} 
+<h2>15.3: ... and in Eclipselink, OpenJPA and Hibernate
+</h2> 
+<p><i><b>Rob Opinion:</b></i> It is my understanding/opinion as at May 10 that ...
+</p> 
+<p>Eclipselink doesn't support the Subclassing approach. This is interesting because I'd guess this project has the most resources behind it and it is the JPA 2.0 reference implementation. 
+</p> 
+<p>OpenJPA supports both approaches but strongly suggests to users to use Enhancement approach (javaagent or ant) for production deployment.
+</p> 
+<p>Hibernate supports both approaches but IMO the majority of hibernate users will be using the Subclassing approach. This is possibly because it is simplier where you don't have to 
+</p> 
+<p>
+</p> 
+<p>muck around with javaagent or ant etc.
+</p> 
+<p>In my opinion, the reason many people dislike the Enhancement approach (via javaagent or ant task etc) is because many have had problems getting this to work (trouble configuring and using javaagent, finding configuration files etc)... or because it slows down the... code – compile – run cycles (you have to run the ant task or make sure a javaagent is configured etc). In my opinion the Eclipse Ebean Enhancer plugin provides a good solution in that the classes are enhanced transparently whenever you save in the IDE. This is the approach I recommend for Eclipse users of Ebean.
+</p> 
+<p>Note that there is also an IDEA enhancer for Ebean so please ask for that if required.
+</p> 
+<h2>15.4: Subclass Generation
+</h2> 
+<p>Subclass generation is a technique made popular by Hibernate and also supported in OpenJPA and Ebean.
+</p> 
+<p>How this works in Ebean is that for each entity bean a new class is generated that is a subclass of that entity bean.
+</p> 
+<p>For the Person entity a subclass Person$$EntityBean would be generated...
+</p> 
+{% highlight java %}package model;
+...
+import com.avaje.ebean.bean.EntityBean;
+public class Person$$EntityBean extends Person implements EntityBean
+{
+...
+{% endhighlight %} 
+<p>
+</p> 
+<p>The bytes for the Person$$EntityBean class are generated by Ebean and then defined using a ClassLoader.
+</p> 
+<p><b>Note:</b> When you query the ORM returning a Person you actual y get a Person$$EntityBean class. This can confuse people.
+</p> 
+{% highlight java %}Person p = Ebean.find(Person.class, 1);
+System.out.println("vanilla: "+Person.class.getName());System.out.println("subclass:"+p.getClass().getName());
+{% endhighlight %} 
+<p>
+</p> 
+<p>output:
+</p> 
+<b>vanilla:  app.data.Personsubclass: app.data.Person$$EntityBean$testdb
+</b> 
+<p><b>Note:</b> The ClassLoader that defines the Person$$EntityBean class is not the same ClassLoader than loaded the Person class. This can lead to visibility and security issues such as Person$$EntityBean not being able to see fields or methods in Person.
+</p> 
+<p><i><b>This is essentially why with Ebean the subclassing approach uses Property access and not field acccess.</b></i>
+</p> 
+{% highlight java %}Bug bug = Ebean.find(Bug.class, 1);
+System.out.println("ClassLoaders...  ");
+System.out.println("vanilla:  "+Bug.class.getClassLoader());
+System.out.println("subclass: "+bug.getClass().getClassLoader());
+{% endhighlight %} 
+<p>output:
+</p> 
+{% highlight java %}ClassLoaders...
+vanilla:  sun.misc.Launcher$AppClassLoader@11b86e7
+subclass: com.avaje.ebean.enhance.subclass.SubClassFactory@1db7df8
+{% endhighlight %} 
+<p>
+</p> 
+<h2>15.4.1:  Ebean's  Subclass Generation – Property access
+</h2> 
+<p>As part of the initialisation of an EbeanServer it gathers all the meta data about al  the entity beans etc. As part of this process for each entity bean Ebean checks to see if the class is already enhanced.  If the class implements the EntityBean interface then it has already been enhanced via javaagent, ant, Eclipse Ebean Enhancer plugin etc.
+</p> 
+<p>If the class has not been enhanced then Ebean will generate a subclass of that entity bean type. In the case of the Person entity bean this would look something like...
+</p> 
+<p> 
+</p> 
+{% highlight java %}package model;
+...
+import com.avaje.ebean.bean.EntityBean;
+public class Person$$EntityBean extends Person implements EntityBean {
+// intercept field is addedEntityBeanIntercept _ebean_intercept;...
+public Person$$EntityBean() {
+super();
+_ebean_intercept = new EntityBeanIntercept(this);
+}
+// property access is used
+public String getFirstName() {
+_ebean_intercept.preGetter("firstName");
+return super.getFirstName();
+}
+// property access is used
+public void setFirstName(String newValue) {
+  _ebean_intercept.preSetter("firstName", newValue, getFirstName());
+  super.setFirstName(newValue);
+}
+// Other property getters and setters ...
+// Other methods added to implement EntityBean ...
+public EntityBeanIntercept _ebean_getIntercept() { ... }
+public Object _ebean_createCopy() { ... }
+public void _ebean_setField(...) { ... }
+public Object _ebean_getField(...) { ... }
+...
+{% endhighlight %} 
+<p>Note that when the subclass is generated Property access is used (Field access is not available for subclass generation in Ebean). The reason for this is that the Person$$EntityBean.class is defined in a different ClassLoader to that of the Person.class – and by default Java security restricts access by Person$$EntityBean to the public and protected fields and methods of Person.class.
+</p> 
+<p>That is, Person$$EntityBean is in a different "Runtime Package" as per JVM spec.
+</p> 
+<p>
+</p> 
+<p><i>"At run time, a class or interface is determined not by its name alone, but by a pair: its  fully qualified name and its defining class loader. Each such class or interface belongs to a single runtime package. The runtime package of a class or interface is determined by  the package name and defining class loader of the class or interface."</i>
+</p> 
+<p><a href="http://java.sun.com/docs/books/jvms/second_edition/html/ConstantPool.doc.html#72007"><i>http://java.sun.com/docs/books/jvms/second_edition/html/ConstantPool.doc.html#72007</i></a>
+</p> 
+<p><a href="http://java.sun.com/docs/books/jvms/second_edition/html/ConstantPool.doc.html#75929"><i>http://java.sun.com/docs/books/jvms/second_edition/html/ConstantPool.doc.html#75929</i></a>
+</p> 
+<p>The <i><b>big upside</b></i> of the subclass generation approach is that there is no "configuration" required – no javaagent or ant task to execute. You can just write you entity beans and test them.
+</p> 
+<p>The <i><b>big downside</b></i> of this approach is that Ebean's implementation uses Property access. That is, field access is not available with subclass generation due to JVM security. 
+</p> 
+<p><i><b>Rob Opinion:</b></i> Subclass Generation is easy to get working (no javaagent setup etc)... but I personal y feel that Field access is the better approach long term – specifically al owing more freedom in how the entity beans are coded. In my opinion it's a matter of making the enhancement process easy to use. The Eclipse IDE plugin to automatically enhance the beans as they are saved is one way to make enhancement easy and I am keen to make that work well.
+</p> 
+<h2>15.5: Enhancement
+</h2> 
+<p>I am using the term "Enhancement" to cover all the ways (javaagent, ant, IDE plugin etc) that are used to modify the class in question – as opposed to generating a new class (subclass generation).
+</p> 
+<p>Other similar terms to Enhancement that are used around the place include Weaving, Transformation and byte code manipulation.
+</p> 
+<p>LTW – Load time weaving is used to refer to when the class manipulation occurs at "load time" typical y via javaagent compared with class manipulation occuring at "build time" typical y via an ANT task or IDE plugin.
+</p> 
+<p>In raw terms a class is just a byte[] and we are simply manipulating those bytes prior to the class being defined by its ClassLoader.
+</p> 
+<p>
+</p> 
+<h2>15.5.1:  Ebean's Enhancement – Field access
+</h2> 
+<p>The ANT Task, javaagent and the Eclipse IDE Enhancer plugin al  use the same enhancement code. 
+</p> 
+<b>Already Enhanced
+</b> 
+<p>As part of the enhancement Ebean detects if the bean has already been enhanced and if so will skip the enhancement. In this way it does not matter if you try to enhance a set of classes more than once or use a number of techniques (ANT Task,  Enhancer Plugin and javaagent).
+</p> 
+<b>Mixing Enhanced and Subclassed entity beans
+</b> 
+<p>You can general y use a mixture of enhanced and subclassed entity beans but it is not a recommended approach. This could happen if you use ANT to enhance some but not al  of the entity beans. The ones not enhanced will end up being "subclassed" (Any entity bean class that is not enhanced when an EbeanServer initialises will have a subclass generated for it).
+</p> 
+<p><i><b>However</b></i>, you can <i><b>NOT</b></i> use a mixture of enhanced and subclassed beans for a given inheritance hierarchy. For a given inheritance heirarchy al  the beans involved in that heirarchy need to be either enhanced or subclassed – not a mixture.
+</p> 
+<p>To avoid confusion it is recommended to use either Enhancement or Subclassing and not a mixture of both. Ebean will detect if there is a mixture of both and will log a warning.
+</p> 
+<p>Example: warning when some entity beans are enhanced and some are subclassed.
+</p> 
+{% highlight java %}...
+INFO: Entities enhanced[3] subclassed[5]
+{% endhighlight %} 
+<p></b>WARNING: Mixing enhanced and subclassed entities. Subclassed</b>
+</p> 
+{% highlight java %}classes:[User, OrderStatus, BugDetail, TestEntity, Order]
+...
+{% endhighlight %} 
+<p>
+</p> 
+<h2>15.5.2:  javaagent
+</h2> 
+<p>Examples where<a href="file:///D:/docs/jarlib/ebean-0.9.8.jar"> d:/jarlib/ebean-agent-2.0.0.jar </a>is the location of the ebean agent jar file...
+</p> 
+<p>-javaagent:d:/jarlib/ebean-agent-2.0.0.jar
+</p> 
+<p>-javaagent<a href="file:///D:/docs/jarlib/ebean-0.9.8.jar=debug=3">:d:/jarlib/ebean-agent-2.0.0.jar=debug=3</a>
+</p> 
+<p>-javaagent<a href="file:///D:/docs/jarlib/ebean-0.9.8.jar=debug=3">:d:/jarlib/ebean-agent-2.0.0.jar=debug=3;packages=app.data.*,org.test.model.*</a>
+</p> 
+<p>To use the javaagent approach you have to change the parameters passed to the JVM when it is started.
+</p> 
+<p><b>The Ebean javaagent can take 2 optional parameters:</b> 
+</p> 
+<p><b>debug:</b> An int between 0 and 10,  with 0 producing no output and 10 producing lots of debug output.
+</p> 
+<p><b>packages</b>: a comma delimited list of packages. This is used to speed up the processing by skipping transformation on any class not in one of the listed packages.
+</p> 
+<p>  
+</p> 
+<p>The following images shows the Eclipse run dialog with the Ebean java agent specified in the VM arguments.
+</p> 
+<p>
+</p> 
+<p><img src="ebean-userguide-89_1.jpg"/>
+</p> 
+<p><i><b>Rob Opinion:</b></i> The javaagent approach has 3 known critisims:
+</p> 
+<p><b>Criticism 1:</b> Slows the JVM Bootup – as every class is passed to transformers prior to being defined by the ClassLoaders. Ebean skips classes that are in well known packages such as known JDBC drivers, Sun classes, junit classes and common apache libraries. You can also use the packages parameter to only transform classes in those packages.
+</p> 
+<p><b>Criticism 2:</b> Not supported by Java Web Start. You have to use ANT or IDE Plugin for this scenario.
+</p> 
+<p><b>Criticism 3:</b> Not great in a Server setup like Tomcat. You really want to specify the javaagent on a per webapp basis rather than global y to the whole server. In the future I'm going to look at a specific Tomcat Loader to see if that is useful.
+</p> 
+<p>
+</p> 
+<h2>15.5.3:  ANT Task
+</h2> 
+<p>Modify your ant build.xml file to:
+</p> 
+<p>1. Define the AntEnhanceTask.
+</p> 
+<p>2. Create a target that uses the AntEnhanceTask to enhance the entity classes.
+</p> 
+{% highlight java %}&lt;taskdef name="ebeanEnhance"
+   classname="com.avaje.ebean.enhance.ant.AntEnhanceTask"
+   classpath="your_path_to/ebean-x.x.x.jar" /&gt;
+&lt;target name="ormEnhance" depends="clean,compile"&gt;
+    &lt;!-- eg. enhance entities in packages below app.entity --&gt;
+    &lt;ebeanEnhance classSource="your_classes_directory"
+     packages="app.entity*"
+     transformArgs="debug=5" /&gt;
+&lt;/target&gt;
+{% endhighlight %} 
+<p><b>classSource:</b> This is the directory that contains your class files. That is, the directory where your IDE will compile your java class files to, or the directory where a previous ant task will compile your java class files to.
+</p> 
+<p><b>classDest:</b> The directory where the enhanced classes are written to. If not specified this defaults to the classSource effectively replacing the original class file with the enhanced class file.
+</p> 
+<p><b>packages:</b> a comma delimited list of packages that contain entity classes. All the classes in these packages are searched for entity classes to be enhanced.
+</p> 
+<p><b>transformArgs:</b> This contains a debug level (0 - 10) .
+</p> 
+<b>Rob Opinion:  
+</b> 
+<p>The ANT Task is great. However, I personally found that using the ANT Task by itself was not satisfactory in that it negatively effected the ... CODE – COMPILE – RUN cycle.  That is, having to run the ANT task slows down that cycle and is general y a pain in this scenario.
+</p> 
+<p>I think it is more likely that the ANT Task will be used as part of the build process (building a jar or war for deployment) and other approaches such as the IDE Plugin are better suited to use during the actual development CODE – COMPILE – RUN process.
+</p> 
+<p>
+</p> 
+<p><img src="ebean-userguide-91_1.jpg"/>
+</p> 
+<h2>15.5.4:  Eclipse IDE – Configure Project JRE
+</h2> 
+<p>In Eclipse you can specify the javaagent parameter as the VM arguments in the run configuration. Eclipse – Run – Open Run Dialog – Arguments – VM Arguments.
+</p> 
+<p>However, you would need to do this for each class with a main() method that you want to run. This could be tedious if you have a lot of different classes with main() methods.
+</p> 
+<p>Another approach is to register a new "Installed JRE" with the javaagent parameter set as the default VM argument and then use this JRE for your project rather than a normal JRE.
+</p> 
+<p>Eclipse – Preferences – Java – Installed JREs – Add
+</p> 
+<p>–
+</p> 
+<p>Using the Browse button find a JRE (I'd find a JDK actually).
+</p> 
+<p>–
+</p> 
+<p>Enter the Default VM Arguments (-javaagent ...)
+</p> 
+<p>
+</p> 
+<p>
+</p> 
+<p>
+</p> 
+<p><img src="ebean-userguide-94_1.jpg"/>
+</p> 
+<p><img src="ebean-userguide-94_2.png"/>
+</p> 
+<p><img src="ebean-userguide-94_3.jpg"/>
+</p> 
+<p>Eclipse – project – Build Path – Configure Build Path ...
+</p> 
+<p>Libraries – Add Library – JRE System Library – Alternate JRE...
+</p> 
+<p>(Choose your JRE that has the javaagent configured)
+</p> 
+<p>You now have two JRE Libraries in your projects build path. Remove the original one leaving you with the one that has the javaagent configured.
+</p> 
+<p>Your project Build Path should now look something like this (below) where my JRE configured with the javaagent is cal ed "jdk1.5.0_03+ebeanAgent"
+</p> 
+<p>
+</p> 
+<p><img src="ebean-userguide-95_1.jpg"/>
+</p> 
+<p>Now, whenever you run a class with a main() method your javaagent is configured for you.
+</p> 
+<p>In the example above there is the "debug=1" parameter and with this you will see in the console (which shows the agent is being used) followed by enhancement debug output.
+</p> 
+{% highlight java %}
+premain loading Transformer args:debug=1
+{% endhighlight %} 
+<p>
+</p> 
+<h2>15.5.5:  Eclipse IDE Enhancer Plugin
+</h2> 
+<p>The Eclipse Enhancer plugin enhances classes as they are saved by the Eclipse IDE. 
+</p> 
+<p>The benefit of using this approach is that you do not need to configure a javaagent nor do you need to remember to run an ANT task before running your application. That is, you can just code your entity beans and then run your code or junit tests.
+</p> 
+{% highlight java %}Install the plugin
+Eclipse 3.4:
+{% endhighlight %} 
+<p>Help – Software Updates – Add Site -<a href="http://www.avaje.org/eclipseupdate/"> http://www.avaje.org/eclipseupdate/</a>
+</p> 
+<p>Manage Sites – Check the newly added site – OK
+</p> 
+<p>Check the<a href="http://www.avaje.org/eclipseupdate/"> http://www.avaje.org/eclipseupdate/ </a>site and fol ow the instructions.
+</p> 
+<p>Note: the trailing slash after eclipseupdate/ is required.
+</p> 
+<b>Using the Enhancer Plugin
+</b> 
+<p>You need to enable the Enhancer on a per project basis. To do this select a project – right mouse click menu – Toggle Enable/Disable Ebean Enhancement.
+</p> 
+<p>When you enable the Enhancer it adds a "Builder" to the list of "builders" ...
+</p> 
+<p>Select a project – right mouse click menu – properties – builders
+</p> 
+<p>When the enhancement is enabled you see 2 builders both enabled. The Java Builder and the Ebean Builder.
+</p> 
+<b>Preferences
+</b> 
+<p>There is a Ebean preference page added where you can set debug levels on the Enhancement process and the plugin itself.
+</p> 
+<b>How to tell if the Enhancement is occuring?
+</b> 
+<p>If the Plugin has initialised then project – right mouse click menu ... will show the menu item to be "Disable Ebean Enhancer" indicating that the enhancer is enabled on this project. If the Plugin has not yet been initialised then the menu item just shows "Toggle Ebean Enhancer" which will turn it on or off.
+</p> 
+<p>Turn on debugging and check the log files (Window – Preferences – Ebean)
+</p> 
+<p>The other option is to look at the logs that Ebean writes during its startup phase. Specifically it reports the number of entity beans that have been "enhanced" and the number that have been "subclassed" and will log a warning if you are using a mix of both.
+</p> 
+<p>In the following example log you can see that <i><b>34</b></i> classes where enhanced and <i><b>3 </b></i>were 
+</p> 
+<p>subclassed. It is recommended not to mix enhancement and subclassing though so when this mixing is detected a warning is displayed.
+</p> 
+<p>
+</p> 
+{% highlight java %}...
+INFO: Validation: [on] autocreate.notnull=[true] ...  
+INFO: Deployment xml [orm.xml]  loaded.
+INFO: Entities enhanced[34] subclassed[3]
+WARNING: Mixing enhanced and subclassed entities. Subclassed ... 
+INFO: Transaction logs in: logs
+INFO: Autofetch deserialized from file [...\ebean.mysql.autofetch]
+...
+{% endhighlight %} 
+<p>
+</p> 
+<b>Specialised Tomcat Loader for per-webapp Enhancement
+</b> 
+<p>This is on the future development TODO list...
+</p> 
+<p>
+</p> 
+<h2>16: Groovy
+</h2> 
+<p>You can use Ebean with Groovy classes. There is nothing special you need to do. Just annotate your groovy beans with the JPA annotations.
+</p> 
+{% highlight java %}//GROOVY CODE (generates the getters and setters etc)package test
+import javax.persistence.*;
+@Entity@Table(name="f_forum")public class PersonG{
+@Id Integer id
+@Column(name="title")String name
+@OneToMany(cascade=CascadeType.ALL)List&lt;Topic&gt; topics;
+}
+{% endhighlight %} 
+<p>You can use Ebean just as you would in Java.
+</p> 
+{% highlight java %}// GROOVY CODEpackage test
+import com.avaje.ebean.*
+public class MainEbean{
+public static void main(String[] args) {
+PersonG g = Ebean.getReference(PersonG.class, 1);String name = g.getName();
+List&lt;PersonG&gt; list = Ebean
+.find(PersonG.class).fetch("topics").findList()
+{% endhighlight %} 
+<p>
+</p> 
+{% highlight java %}println "Got list "+list
+list.each() { 
+print " ${it.id} ${it.name} \n" print " GOT DETAILS: "+it.topics
+}; println "done";
+}
+}
+{% endhighlight %} 
+<p>Note that if you want more groovy integration please make some suggestions of what you would like to see.    
+</p> 
+<p>
+</p> 
+<h2>17: Scala
+</h2> 
+<p>You can use Ebean with Scala as well. Again, annotate your scala "bean" with the JPA annotations as you would normally. 
+</p> 
+<p>Ebean 2.6 has added support for Scala 2.8 mutable Buffer, Set and Map and Option types (you no longer have to use the Java col ection types).
+</p> 
+<p>Please contact the Ebean google group for the latest Scala examples.
+</p> 
+<p></body>
+</p> 
+<p></html>
+</p>
