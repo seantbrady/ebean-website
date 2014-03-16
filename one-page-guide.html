@@ -136,7 +136,7 @@ where id = 27
 </h2> 
 <p>ORM is neat but at the same time we should remember that there are times when it is easier/better/faster to have direct control over the SQL. Ibatis is such a tool and very popular with this in mind.
 </p> 
-<p>Part of Ebean's goal is to make using your own SQL easy (easier than Ibatis is the goal for Ebean). The @SqlSelect feature goes a long way to doing this along with SqlUpdate and Cal ableSql objects.
+<p>Part of Ebean's goal is to make using your own SQL easy (easier than Ibatis is the goal for Ebean). The @SqlSelect feature goes a long way to doing this along with SqlUpdate and CallableSql objects.
 </p> 
 <p>
 </p> 
@@ -185,7 +185,7 @@ Customer customer = defaultServer.find(Customer.class, 4);
 {% highlight java %}// find a customer by their id
 Customer customer = Ebean.find(Customer.class, 4);
 // find a list...
-List&lt;Customer&gt; customers = 
+List<Customer> customers = 
 Ebean.find(Customer.class)
 .where().like("name", "Rob%")
 .orderBy("name desc")
@@ -196,7 +196,7 @@ Ebean.find(Customer.class)
 {% highlight java %}// with select() and fetch() you can specify
 // only the properties you want to fetch.
 // ... returning "Partially" populated objects
-List&lt;Order&gt; orders =
+List<Order> orders =
 Ebean.find(Order.class)
 .select("status, shipDate, orderDate")
 .fetch("customer", "name")
@@ -219,17 +219,17 @@ Order order = Ebean.createQuery(Order.class,q)
 </p> 
 {% highlight java %}String q = "find order fetch customer fetch details where id=:id";
 // using non-fluid style...
-Query&lt;Order&gt; query = Ebean.createQuery(Order.class,q);
+Query<Order> query = Ebean.createQuery(Order.class,q);
 query.setParameter("id", 1);
 Order order = query.findUnique();
 // using non-fluid style...
-Query&lt;Order&gt; query = Ebean.createQuery(Order.class);
+Query<Order> query = Ebean.createQuery(Order.class);
 query.select("status, shipDate, orderDate");
 query.fetch("customer", "name");
 query.where().eq("status", Status.ACTIVE)
 .like("customer.name", "Rob%");
 query.orderBy("customer.name desc");
-List&lt;Order&gt; orders = query.findList();
+List<Order> orders = query.findList();
 {% endhighlight %} 
 <p><hr />
 </p> 
@@ -274,7 +274,7 @@ RawSqlBuilder
       .columnMapping("c.id",      "order.customer.id")
       .columnMapping("c.name",    "order.customer.name")
       .create();
-Query&lt;OrderAggregate&gt; query = Ebean.find(OrderAggregate.class);
+Query<OrderAggregate> query = Ebean.find(OrderAggregate.class);
 query.setRawSql(rawSql)        
     // with "parsed" SQL we can add expressions to the
 // where and having clauses etc
@@ -302,7 +302,7 @@ RawSql rawSql =
     //.columnMapping("sum(d.order_qty*d.unit_price)","totalAmount")
     .create();
         
-Query&lt;OrderAggregate&gt; query = Ebean.find(OrderAggregate.class);
+Query<OrderAggregate> query = Ebean.find(OrderAggregate.class);
 query.setRawSql(rawSql)
     // after the RawSql query executes Ebean can execute
 // FetchConfig().query() joins ...    
@@ -312,7 +312,7 @@ query.setRawSql(rawSql)
     .having().gt("totalAmount", 20)
     .order().desc("totalAmount")
     .setMaxRows(10);
-List&lt;OrderAggregate&gt; list = query.findList();
+List<OrderAggregate> list = query.findList();
 {% endhighlight %} 
 <p>
 </p> 
@@ -336,9 +336,13 @@ List&lt;OrderAggregate&gt; list = query.findList();
 </p> 
 {% highlight java %}Order order = Ebean.find(Order.class, 12);
 order.setStatus(OrderStatus.SHIPPED);order.setShipDate(...);
-// this will save the orderEbean.save(order);
-Cascading Save &amp; Delete
+// this will save the order
+Ebean.save(order);
 {% endhighlight %} 
+<p>
+</p> 
+<b>Cascading Save &amp; Delete
+</b> 
 <p>The mapping annotations @ManyToOne, @OneToMany, @OneToOne and @ManyToMany provide a cascade attribute which is used to control whether saves and deletes are cascaded.
 </p> 
 <p>
@@ -357,7 +361,7 @@ public class Order {
     Customer customer;
 // save and delete cascaded
     @OneToMany(cascade=CascadeType.ALL)
-List&lt;OrderDetail&gt; details;
+List<OrderDetail> details;
 {% endhighlight %} 
 <p>
 </p> 
@@ -379,7 +383,7 @@ List&lt;OrderDetail&gt; details;
 // 'Implicit' transaction created and committed
 Ebean.save(order);
 {% endhighlight %} 
-<p>Transactions can be demarcated with via @Transactional annotation (requires Enhancement to be used) and serveral programmatic approaches – TxRunnable/ TxCal able and beginTransaction() etc.
+<p>Transactions can be demarcated with via @Transactional annotation (requires Enhancement to be used) and serveral programmatic approaches – TxRunnable/ TxCallable and beginTransaction() etc.
 </p> 
 <p>Transactions are covered fully in section<a href="ebean-userguides.html#14"> 6. Transactions</a>
 </p> 
@@ -469,7 +473,7 @@ int rows = update.execute();
 </p> 
 <h2>5.1.3:  CallableSql
 </h2> 
-<p>Cal ableSql provides a way to cal  a database stored procedure.
+<p>CallableSql provides a way to cal  a database stored procedure.
 </p> 
 {% highlight java %} String sql = "{call sp_order_mod(?,?)}";
 CallableSql cs = Ebean.createCallableSql(sql);
@@ -478,7 +482,7 @@ cs.registerOut(2, Types.INTEGER);
 Ebean.execute(cs);
 // read the out parameter Integer returnValue = (Integer) cs.getObject(2);
 {% endhighlight %} 
-<p>You can extend Cal ableSql and you can also get the java.sql.Connection from a Transaction and use raw JDBC API to call a stored procedure. 
+<p>You can extend CallableSql and you can also get the java.sql.Connection from a Transaction and use raw JDBC API to call a stored procedure. 
 </p> 
 <h2>5.1.4:  Summary
 </h2> 
@@ -492,7 +496,7 @@ Ebean.execute(cs);
 </p> 
 <p>The java.sql.Connection object can be returned from a transaction, and with that you can perform any raw JDBC cal s you like. 
 </p> 
-<p>This may be useful for Savepoints, advanced Clob/Blob use or advanced stored procedure calls (if Cal ableSql doesn't do the business for you).
+<p>This may be useful for Savepoints, advanced Clob/Blob use or advanced stored procedure calls (if CallableSql doesn't do the business for you).
 </p> 
 {% highlight java %}Transaction transaction = Ebean.beginTransaction();try {
 Connection connection = transaction.getConnection();
@@ -586,15 +590,15 @@ fetch billingAddress (+readonly, line1, city)
 <p>This needs a little clarification.
 </p> 
 {% highlight java %}// these are the same
-Query&lt;Order&gt; query = Ebean.createQuery(Order.class); 
-Query&lt;Order&gt; query = Ebean.find(Order.class); 
+Query<Order> query = Ebean.createQuery(Order.class); 
+Query<Order> query = Ebean.find(Order.class); 
 {% endhighlight %} 
 <p>This may be confusing but these two methods do exactly the same thing. The reason both exist is because the createQuery() style is consistent with JPA and could be argued is a better more accurate name. However, I feel that find() is more consistent with the fluid API style.
 </p> 
 <p>So, apologies in that there are 2 ways to do the same thing. 
 </p> 
 {% highlight java %}// fluid API style with find()
-List&lt;Order&gt; list =
+List<Order> list =
 Ebean.find(Order.class).fetch("customer").where().eq("status.code", "SHIPPED").findList();
 {% endhighlight %} 
 <h2>6.4: Named Queries
@@ -637,7 +641,7 @@ public class User implements Serializable {
 // ... in that you can modify them via code
 // ... prior to executing the query
 // you can modify a named query...
-Set&lt;User&gt; users = Ebean.createQuery(User.class, "bugStatus")
+Set<User> users = Ebean.createQuery(User.class, "bugStatus")
 .setParameter("bugStatus", "NEW")
 // you can add to the where clause
 .where().ilike("name", "rob%")
@@ -660,7 +664,7 @@ Set&lt;User&gt; users = Ebean.createQuery(User.class, "bugStatus")
 <p>Example: Normal "Fetch Join"
 </p> 
 {% highlight java %}// Orders and their customers fetch in a single SQL query
-List&lt;Order&gt; l0 = Ebean.find(Order.class)
+List<Order> l0 = Ebean.find(Order.class)
    .fetch("customer")
    .findList();
 {% endhighlight %} 
@@ -669,7 +673,7 @@ List&lt;Order&gt; l0 = Ebean.find(Order.class)
 {% highlight java %}// 2 SQL statements are used to build this object graph
 // The first SQL query fetches the Orders and the second
 // SQL query fetches customers
-List&lt;Order&gt; l0 = Ebean.find(Order.class)
+List<Order> l0 = Ebean.find(Order.class)
    .fetch("customer", new FetchConfig().query())
    .findList();
 {% endhighlight %} 
@@ -684,7 +688,7 @@ List&lt;Order&gt; l0 = Ebean.find(Order.class)
 <p>Example: Two "Query Joins" results in 3 SQL queries used to build this object graph
 </p> 
 {% highlight java %}// A more advanced example with multiple query joins
-List&lt;Order&gt; l0 = Ebean.find(Order.class)
+List<Order> l0 = Ebean.find(Order.class)
  .select("status, shipDate")
 .fetch("details", "orderQty, unitPrice", new FetchConfig().query())
  .fetch("details.product", "sku, name")
@@ -696,15 +700,15 @@ List&lt;Order&gt; l0 = Ebean.find(Order.class)
 <p>The resulting 3 sql queries are:
 </p> 
 {% highlight java %}// query 1 … the main query
-&lt;sql summary='Order' &gt;
+<sql summary='Order' >
 select o.id c0, o.status c1, o.ship_date c2, o.customer_id c3
-from o_order o&lt;/sql&gt;
+from o_order o</sql>
 {% endhighlight %} 
 <p>Query 1 - Note: customer_id was automatical y added to support query join.
 </p> 
 {% highlight java %}// query 2 … query join on customer
-&lt;sql mode='+query' summary='Customer, shippingAddress
-+many:contacts' load='path:customer batch:10 actual:2' &gt;
+<sql mode='+query' summary='Customer, shippingAddress
++many:contacts' load='path:customer batch:10 actual:2' >
 select c.id c0, c.name c1
         , cs.id c2, cs.line_1 c3, cs.city c4
         , cc.id c5, cc.first_name c6, cc.last_name c7, cc.mobile c8 
@@ -713,15 +717,15 @@ left outer join o_address cs on cs.id = c.shipping_address_id
 left outer join contact cc on cc.customer_id = c.id 
 where c.id in (?,?,?,?,?,?,?,?,?,?)
 order by c.id
-&lt;/sql&gt;
+</sql>
 {% endhighlight %} 
 <p>Query 2 - fetching the first 10 customers referenced (batch:10) but there where actual y only 2 to fetch (actual:2).
 </p> 
 <p>
 </p> 
 {% highlight java %}// query 3 … query join on details
-&lt;sql mode='+query' summary='Order +many:details, details.product'
-load='path:details batch:100 actual:3' &gt;
+<sql mode='+query' summary='Order +many:details, details.product'
+load='path:details batch:100 actual:3' >
 select o.id c0
         , od.id c1, od.order_qty c2, od.unit_price c3
         , odp.id c4, odp.sku c5, odp.name c6
@@ -729,7 +733,7 @@ from o_order o
 left outer join o_order_detail od on od.order_id = o.id
 left outer join o_product odp on odp.id = od.product_id 
 where o.id in (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-order by o.id&lt;/sql&gt;
+order by o.id</sql>
 {% endhighlight %} 
 <p>Query 3 – fetching the order details for the first 100 orders (batch:100).
 </p> 
@@ -748,7 +752,7 @@ order by o.id&lt;/sql&gt;
 <p>Example: Control the query used to lazy load 
 </p> 
 {% highlight java %}// control the lazy loading of customers ...
-List&lt;Order&gt; list = Ebean.find(Order.class)
+List<Order> list = Ebean.find(Order.class)
    .fetch("customer","name", new FetchConfig().lazy(5))
    .fetch("customer.contacts","contactName, phone, email")
    .fetch("customer.shippingAddress")
@@ -765,8 +769,8 @@ List&lt;Order&gt; list = Ebean.find(Order.class)
 {% endhighlight %} 
 <p>The resulting lazy loading query is … 
 </p> 
-{% highlight java %}&lt;sql mode='+lazy' summary='Customer, shippingAddress +many:contacts'
-load='path:customer batch:5 actual:2' &gt;
+{% highlight java %}<sql mode='+lazy' summary='Customer, shippingAddress +many:contacts'
+load='path:customer batch:5 actual:2' >
 select c.id c0, c.name c1
         , cs.id c2, cs.line_1 c3, cs.line_2 c4, cs.city c5,
 cs.cretime c6, cs.updtime c7, cs.country_code c8
@@ -778,7 +782,7 @@ left outer join o_address cs on cs.id = c.shipping_address_id
 </p> 
 {% highlight java %}where c.id in (?,?,?,?,?)
 order by c.id
-&lt;/sql&gt;
+</sql>
 {% endhighlight %} 
 <p>
 </p> 
@@ -808,14 +812,14 @@ where status = :orderStatus
 <p>The "Future" objects returned extend <i><b>java.util.concurrent.Future</b></i>. This provides support for cancel ing the query, checking if it is cancel ed or done and getting the result with waiting and timeout support. 
 </p> 
 {% highlight java %}// Methods on Query for ansychronous execution
-public FutureList&lt;T&gt; findFutureList();
-public FutureIds&lt;T&gt; findFutureIds();
-public FutureRowCount&lt;T&gt; findFutureRowCount();
+public FutureList<T> findFutureList();
+public FutureIds<T> findFutureIds();
+public FutureRowCount<T> findFutureRowCount();
 {% endhighlight %} 
 <p>Example: Using FutureList
 </p> 
-{% highlight java %}Query&lt;Order&gt; query = Ebean.find(Order.class);
-// find list using a background threadFutureList&lt;Order&gt; futureList = query.findFutureList();
+{% highlight java %}Query<Order> query = Ebean.find(Order.class);
+// find list using a background threadFutureList<Order> futureList = query.findFutureList();
 // do something else ...
 if (!futureList.isDone()){
 {% endhighlight %} 
@@ -826,9 +830,9 @@ if (!futureList.isDone()){
 futureList.cancel(true);
 }
 // wait for the query to finish … no timeout
-List&lt;Order&gt; list = futureList.get();
+List<Order> list = futureList.get();
 // wait for the query to finish … with a 30sec timeout
-List&lt;Order&gt; list2 = futureList.get(30, TimeUnit.SECONDS);
+List<Order> list2 = futureList.get(30, TimeUnit.SECONDS);
 {% endhighlight %} 
 <h2>6.7: PagingList Query
 </h2> 
@@ -845,7 +849,7 @@ List&lt;Order&gt; list2 = futureList.get(30, TimeUnit.SECONDS);
 <p>So with PagingList when you use Page 2 it will automatical y fetch Page 3 data in the background (using a FutureList query). The persistence context is automatical y propagated meaning that all the paging queries use the same persistence context.
 </p> 
 {% highlight java %}int pageSize = 10;
-PagingList&lt;TOne&gt; pagingList = 
+PagingList<TOne> pagingList = 
 Ebean.find(TOne.class)
 .where().gt("name", "2").findPagingList(pageSize);
 // get the row count in the background...
@@ -854,24 +858,24 @@ Ebean.find(TOne.class)
 // ... is called
 pagingList.getFutureRowCount();
 // get the first page
-Page&lt;TOne&gt; page = pagingList.getPage(0);
+Page<TOne> page = pagingList.getPage(0);
 // get the beans from the page as a list
-List&lt;TOne&gt; list = page.getList();
+List<TOne> list = page.getList();
 int totalRows = page.getTotalRowCount();
 if (page.hasNext()) {
-Page&lt;TOne&gt; nextPage = page.next();
+Page<TOne> nextPage = page.next();
 ...
 }
 {% endhighlight %} 
 <p>In a stateless application you should set fetch ahead to false as you are not going to benefit from it.
 </p> 
-{% highlight java %}PagingList&lt;TOne&gt; pagingList = 
+{% highlight java %}PagingList<TOne> pagingList = 
 Ebean.find(TOne.class)
 .where().gt("name", "2")
 .findPagingList(10);
 // fetchAhead not useful in a stateless application
 pagingList.setFetchAhead(false);
-Page&lt;TOne&gt; firstPage = pagingList.getPage(0);
+Page<TOne> firstPage = pagingList.getPage(0);
 {% endhighlight %} 
 <p>
 </p> 
@@ -1291,7 +1295,7 @@ Customer customer = Ebean.find(Customer.class)
 <p>To use the query cache you have to explicitly specify its use on a query.
 </p> 
 {% highlight java %}// use the query cache
-List&lt;Country&gt; list = Ebean.find(Country.class)
+List<Country> list = Ebean.find(Country.class)
 .setUseQueryCache(true)
 .where().ilike("name", "New%")
 .findList();
@@ -1307,7 +1311,7 @@ List&lt;Country&gt; list = Ebean.find(Country.class)
 {% highlight java %}// by default the lists returned from the query
 // cache are readOnly.  Use setReadOnly(false) to
 // return mutable lists
-List&lt;Country&gt; list = Ebean.find(Country.class)
+List<Country> list = Ebean.find(Country.class)
 .setUseQueryCache(true)
 .setReadOnly(false)
 .where().ilike("name", "New%")
@@ -1489,7 +1493,7 @@ Integer id;
 public class Customer {
     ...
     @OneToMany
-    List&lt;Order&gt; orders;
+    List<Order> orders;
 The Order entity bean...
 ...
 @Entity
@@ -1541,7 +1545,7 @@ public class Order {
     ...
 // must cascade the save
     @OneToMany(cascade=CascadeType.ALL)
-    List&lt;OrderDetail&gt; details;
+    List<OrderDetail> details;
 {% endhighlight %} 
 <p>
 </p> 
@@ -1551,7 +1555,7 @@ public class Order {
 </p> 
 {% highlight java %}// create or fetch the order
 Order order = ...
-List&lt;OrderDetail&gt; details = new ArrayList&lt;OrderDetail&gt;();
+List<OrderDetail> details = new ArrayList<OrderDetail>();
 OrderDetail orderDetail = ...
 details.add(orderDetail);
 // set the new details...
@@ -1591,11 +1595,11 @@ public class User implements Serializable {
 // … can explicitly specify the join column if needed
     @OneToMany
 @JoinColumn(name="pref_id")
-    List&lt;Preference&gt; preferences;
+    List<Preference> preferences;
 // bi-directional
 // … join information always read from the other side
     @OneToMany(mappedBy="userLogged")
-    List&lt;Bug&gt; loggedBugs;
+    List<Bug> loggedBugs;
 {% endhighlight %} 
 <p>
 </p> 
@@ -1640,20 +1644,20 @@ public class User implements Serializable {
 public class User implements Serializable {
 ...
     @ManyToMany(cascade=CascadeType.ALL)
-    List&lt;Role&gt; roles;
+    List<Role> roles;
 @Entity
 @Table(name="s_role")
 public class Role {
 ...
     @ManyToMany(cascade=CascadeType.ALL)
-    List&lt;User&gt; users;
+    List<User> users;
 {% endhighlight %} 
 <p>The intersection table name and foreign key columns can default or be specified by @JoinTable etc. 
 </p> 
 <p>The following code shows a new role added to a user.
 </p> 
 {% highlight java %}User user = Ebean.find(User.class, 1);
-List&lt;Role&gt; roles = user.getRoles();
+List<Role> roles = user.getRoles();
 Role role = Ebean.find(Role.class, 27);
 // adding a role to the list...this is remembered and will
 // result in an insert into the intersection table
@@ -1683,7 +1687,7 @@ Ebean.save(user);
 public class User {
     @Id
     Integer id;     
-@Formula(select="(case when ${ta}.id &gt; 4 then 'T' else 'F' end)")
+@Formula(select="(case when ${ta}.id > 4 then 'T' else 'F' end)")
 boolean caseForm;
 ...
 {% endhighlight %} 
@@ -1699,18 +1703,18 @@ int countAssiged;
 <p>The formula properties can be used as normal properties. This includes in query select and where expressions.
 </p> 
 {% highlight java %}// include the countAssigned property
-Query&lt;User&gt; query = Ebean.createQuery(User.class);
+Query<User> query = Ebean.createQuery(User.class);
 query.select("id, name, countAssiged");
 query.fetch("topics");
-List&lt;User&gt; list = query.findList();
+List<User> list = query.findList();
 {% endhighlight %} 
 <p>The SQL generated from the query above is:
 </p> 
-{% highlight java %}&lt;sql summary='[app.data.User]'&gt;
+{% highlight java %}<sql summary='[app.data.User]'>
 select u.id, u.name, 
 (select count(*) from f_topic _b where _b.user_id = u.id)
 from s_user u
-&lt;/sql&gt;
+</sql>
 {% endhighlight %} 
 <p>Note the <i><b>"u"</b></i> in the sql has replaced the ${ta} [table alias placeholder] specified in the select attribute of the formula.
 </p> 
@@ -1747,18 +1751,18 @@ group by user_id
 topic_count from f_topic group by user_id) as _b${ta} on _b$
 {ta}.user_id = id")
 int countWithJoin;
-Query&lt;User&gt; query = Ebean.createQuery(User.class);
+Query<User> query = Ebean.createQuery(User.class);
 query.select("id, name, countWithJoin");
-List&lt;User&gt; list = query.findList();
+List<User> list = query.findList();
 {% endhighlight %} 
 <p>Results in the following SQL: - <i>will generally perform better than the subquery</i>
 </p> 
-{% highlight java %}&lt;sql summary='[app.data.User]'&gt;
+{% highlight java %}<sql summary='[app.data.User]'>
 select u.id, u.name, _bu.topic_count
 from s_user u
 join (select user_id, max(id) as topic_max, count(*) as topic_count
 from f_topic group by user_id) as _bu on _bu.user_id = id
-&lt;/sql&gt;
+</sql>
 {% endhighlight %} 
 <p>    
 </p> 
@@ -1775,17 +1779,17 @@ from f_topic group by user_id) as _bu on _bu.user_id = id
 query.select("id, name, countWithJoin");
 // using the formula field in the where
 query.where().gt("countWithJoin", 1);
-List&lt;User&gt; list = query.findList();
+List<User> list = query.findList();
 {% endhighlight %} 
 <p>Resulting SQL:
 </p> 
-{% highlight java %}&lt;sql summary='[app.data.User]'&gt;
+{% highlight java %}<sql summary='[app.data.User]'>
 select u.id, u.name, _bu.topic_count
 from s_user u
 join (select user_id, max(id) as topic_max, count(*) as topic_count
 from f_topic group by user_id) as _bu on _bu.user_id = id
-where _bu.topic_count &gt; ?
-&lt;/sql&gt;
+where _bu.topic_count > ?
+</sql>
 {% endhighlight %} 
 <p>
 </p> 
@@ -1911,7 +1915,7 @@ INFO: Transaction logs in: C:/apps/tomcat6/logs/trans
 </p> 
 {% highlight java %}// execute a query will create an implicit
 // transaction if there is no current Transaction
-List&lt;User&gt; users = 
+List<User> users = 
 Ebean.find(User.class)
 .fetch("customer")
 .where().eq("state", UserState.ACTIVE)
@@ -2054,7 +2058,7 @@ EbeanServer server = Ebean.getServer(null);
 // create a transaction not "managed" by Ebean
 Transaction transaction = server.createTransaction();
 try {
-Query&lt;User&gt; query = ...;
+Query<User> query = ...;
 // query using explicit transaction
 server.findList(query, transaction);
 User user = ...;
@@ -2551,15 +2555,15 @@ INFO: Entities enhanced[3] subclassed[5]
 </p> 
 <p>2. Create a target that uses the AntEnhanceTask to enhance the entity classes.
 </p> 
-{% highlight java %}&lt;taskdef name="ebeanEnhance"
+{% highlight java %}<taskdef name="ebeanEnhance"
    classname="com.avaje.ebean.enhance.ant.AntEnhanceTask"
-   classpath="your_path_to/ebean-x.x.x.jar" /&gt;
-&lt;target name="ormEnhance" depends="clean,compile"&gt;
-    &lt;!-- eg. enhance entities in packages below app.entity --&gt;
-    &lt;ebeanEnhance classSource="your_classes_directory"
+   classpath="your_path_to/ebean-x.x.x.jar" />
+<target name="ormEnhance" depends="clean,compile">
+    <!-- eg. enhance entities in packages below app.entity -->
+    <ebeanEnhance classSource="your_classes_directory"
      packages="app.entity*"
-     transformArgs="debug=5" /&gt;
-&lt;/target&gt;
+     transformArgs="debug=5" />
+</target>
 {% endhighlight %} 
 <p><b>classSource:</b> This is the directory that contains your class files. That is, the directory where your IDE will compile your java class files to, or the directory where a previous ant task will compile your java class files to.
 </p> 
@@ -2703,7 +2707,7 @@ import javax.persistence.*;
 @Entity@Table(name="f_forum")public class PersonG{
 @Id Integer id
 @Column(name="title")String name
-@OneToMany(cascade=CascadeType.ALL)List&lt;Topic&gt; topics;
+@OneToMany(cascade=CascadeType.ALL)List<Topic> topics;
 }
 {% endhighlight %} 
 <p>You can use Ebean just as you would in Java.
@@ -2712,8 +2716,9 @@ import javax.persistence.*;
 import com.avaje.ebean.*
 public class MainEbean{
 public static void main(String[] args) {
-PersonG g = Ebean.getReference(PersonG.class, 1);String name = g.getName();
-List&lt;PersonG&gt; list = Ebean
+PersonG g = Ebean.getReference(PersonG.class, 1);
+String name = g.getName();
+List<PersonG> list = Ebean
 .find(PersonG.class).fetch("topics").findList()
 {% endhighlight %} 
 <p>
