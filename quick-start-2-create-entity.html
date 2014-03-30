@@ -163,10 +163,27 @@ Tests in error:
   testEntityCreation(org.avaje.ebeanorm.quickstart.AppTest): The type [class org.avaje.ebeanorm.quickstart.models.Customer] is not a registered entity?
 {% endhighlight %}
 
-        <p>What happened here?  Maven is not using the enhance classes from the Ebean Enhancer.  Let's fix it.</p>
+        <p>What happened here?  Maven is not using the enhance classes from the Ebean Enhancer.  Let's fix it by telling the test runner not to use the system class loader.</p>
 
-{% highlight java %}
-// TODO
+{% highlight xml %}
+<plugin>
+  <groupId>org.apache.maven.plugins</groupId>
+  <artifactId>maven-surefire-plugin</artifactId>
+  <version>2.17</version>
+  <configuration>
+    <useSystemClassLoader>false</useSystemClassLoader>
+  </configuration>
+</plugin>
+{% endhighlight %}
+
+        <p>Run the tests to observe success.</p>
+
+{% highlight bash %}
+> mvn -Dsurefire.useFile=false test
+...
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
 {% endhighlight %}
 
 </div> <!-- //end section -->

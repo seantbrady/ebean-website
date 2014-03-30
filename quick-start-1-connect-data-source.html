@@ -40,19 +40,36 @@ Tests in error:
         <p>Let's fix it!  First, add an ebean.properties file to /src/main/resources/</p>
 
 {% highlight properties %}
+## -------------------------------------------------------------
+## Server properties
+## -------------------------------------------------------------
+
 ebean.ddl.generate=true
 ebean.ddl.run=true
 
 ebean.debug.sql=true
 ebean.debug.lazyload=false
 
-ebean.logging=all
-ebean.logging.logfilesharing=all
+## -------------------------------------------------------------
+## Transaction Logging
+## -------------------------------------------------------------
+
+## General logging level: (none, explicit, all)
+ebean.logging=explicit
+ebean.logging.logfilesharing=explicit
 ebean.logging.directory=logs
 
+## Specific Log levels (none, summary, binding, sql)
 ebean.logging.iud=sql
 ebean.logging.query=sql
 ebean.logging.sqlquery=sql
+
+## Log level for txn begin, commit and rollback (none, debug, verbose)
+ebean.logging.txnCommit=debug
+
+## -------------------------------------------------------------
+## DataSources (If using default Ebean DataSourceFactory)
+## -------------------------------------------------------------
 
 datasource.default=h2
 
