@@ -1,0 +1,172 @@
+---
+layout: quick-start
+group: quick-start
+sub-group: create-entity
+heading: Create an Entity Class
+---
+<div class="section">
+    <p>An entity class is a proxy for a database table. Simply create a POJO and annotate with @Entity.  A primary key column can be annotated by @Id.</p>
+
+    <p>Add a Customer class to the org.avaje.ebeanorm.quickstart.models package.</p>
+
+{% highlight java %}
+package org.avaje.ebeanorm.quickstart.models;
+
+import javax.persistence.Entity;
+import javax.persistence.Id;
+import java.lang.Long;
+import java.lang.String;
+
+@Entity
+public class Customer {
+
+    @Id
+    private Long id;
+
+    private String firstName;
+
+    private String lastName;
+
+    public Long getId() {
+        return id;
+    }
+
+    public String getFirstName() {
+        return firstName;
+    }
+
+    public void setFirstName(String firstName) {
+        this.firstName = firstName;
+    }
+
+    public String getLastName() {
+        return lastName;
+    }
+
+    public void setLastName(String lastName) {
+        this.lastName = lastName;
+    }
+}
+{% endhighlight %} 
+
+        <p>Let's verify that we can use this entity.  Add some code to the main method.</p>
+
+{% highlight java %}
+package org.avaje.ebeanorm.quickstart;
+
+import com.avaje.ebean.Ebean;
+import org.avaje.ebeanorm.quickstart.models.Customer;
+
+/**
+ * Hello world!
+ */
+public class App {
+    public static void main(String[] args) {
+        System.out.println("Hello World!");
+
+        Customer c = new Customer();
+        c.setFirstName("Alice");
+        c.setLastName("Smith");
+
+        Ebean.save(c);
+
+        Customer customer = Ebean.find(Customer.class, 1);
+        System.out.println(customer.getFirstName());
+        System.out.println(customer.getLastName());
+    }
+}
+{% endhighlight %} 
+
+        <p>Run it.</p>
+
+{% highlight text %}
+> mvn install
+> mvn exec:java
+...
+javax.persistence.PersistenceException: Entity type class org.avaje.ebeanorm.quickstart.models.Customer is not an enhanced entity bean.
+...
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+{% endhighlight %}
+
+        <p>Failure is expected here.  In order for Ebean to manage the entity, its class must be enhanced through byte code manipulation.  Ebean supports several approaches to enhancement.  One way is at build time using the Ebean Maven Enhancer plugin.  Let's try it.</p>
+
+{% highlight xml %}
+<plugin>
+  <groupId>org.avaje.ebeanorm</groupId>
+  <artifactId>avaje-ebeanorm-mavenenhancer</artifactId>
+  <version>3.2.2</version>
+  <executions>
+    <execution>
+      <id>main</id>
+      <phase>process-classes</phase>
+      <goals>
+        <goal>enhance</goal>
+      </goals>
+      <configuration>
+        <packages>org.avaje.ebeanorm.quickstart.models.**</packages>
+        <transformArgs>debug=2</transformArgs>
+        <classSource>${project.build.outputDirectory}</classSource>
+        <classDestination>${project.build.outputDirectory}</classDestination>
+      </configuration>
+    </execution>
+  </executions>
+</plugin>
+{% endhighlight %}
+
+        <p>Run it again.</p>
+
+{% highlight text %}
+> mvn install
+> mvn exec:java
+...
+Hello World!
+...
+Alice
+Smith
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+{% endhighlight %}
+
+        <p>Make a test for that.</p>
+
+{% highlight java %}
+...
+import com.avaje.ebean.Ebean;
+import com.avaje.ebean.SqlRow;
+import junit.framework.Assert;
+...
+public class AppTest extends TestCase {
+...
+    public void testEntityCreation() {
+        Customer c = new Customer();
+        c.setFirstName("Alice");
+        c.setLastName("Smith");
+
+        Ebean.save(c);
+
+        Customer customer = Ebean.find(Customer.class, 1);
+        Assert.assertEquals("Alice", customer.getFirstName());
+        Assert.assertEquals("Smith", customer.getLastName());
+    }
+}
+{% endhighlight %}
+
+        <p>Run the tests to observe the failure.</p>
+
+{% highlight bash %}
+> mvn -Dsurefire.useFile=false test
+...
+Tests in error:
+  testEntityCreation(org.avaje.ebeanorm.quickstart.AppTest): The type [class org.avaje.ebeanorm.quickstart.models.Customer] is not a registered entity?
+{% endhighlight %}
+
+        <p>What happened here?  Maven is not using the enhance classes from the Ebean Enhancer.  Let's fix it.</p>
+
+{% highlight java %}
+// TODO
+{% endhighlight %}
+
+</div> <!-- //end section -->

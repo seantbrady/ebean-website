@@ -8,25 +8,24 @@ hero-strap: Get up and running in 10 minutes
 ---
 <div class="row">
     <div class="col-sm-4">
-        <h3>1. Get the jars</h3>
-        <p>The recommended way to include Ebean in your project is using Maven, which will automatically include any dependencies for you.
-        However you can also download the necessary Jar archives yourself and add them to your Java project classpath.</p>              
+        <h3>1. Create a Project</h3>
+        <p>Ebean has several options for integrating into your projects and connecting to your databases.  Let's create a sample project to get started.</p>
         <ul>
-            <li><a href="documentation-maven-dependencies.html">Use Maven dependencies</a></li>
-            <li><a href="documentation-download-jars.html">Download the jar files yourself</a></li>
+            <li><a href="quick-start-1-create-project.html">Create a new empty project</a></li>
+            <li><a href="quick-start-1-add-dependencies.html">Add Ebean dependencies</a></li>
+            <li><a href="quick-start-1-connect-data-source.html">Connect to data source</a></li>
         </ul>
     </div> <!-- //end span4 -->
     <div class="col-sm-4">
-        <h3>2. Create "entity" classes</h3> 
-        <p>You need to define the entity classes that Ebean will use as database proxies. To start with, it is often quickest to create entity
-        classes manually. Once you understand the process, you may wish to auto-generate entity classes from your database.</p>                
+        <h3>2. Manipulate Your First Table</h3> 
+        <p>You need to define the entity classes that Ebean will use as database proxies. To start with, it is often quickest to create entity classes manually. Once you understand the process, you may wish to <a href="documentation-generating-an-entity-class.html">auto-generate entity classes</a> from your database.</p>
         <ul>
-            <li><a href="documentation-writing-an-entity-class.html">Create an entity class</a></li>
+            <li><a href="quick-start-2-create-entity.html">Create an entity class</a></li>
             <li><a href="documentation-generating-an-entity-class.html">Generate entity classes from the database</a></li>                    
         </ul>
     </div> <!-- //end span4 -->
     <div class="col-sm-4">
-        <h3>3. Enhance entity classes</h3>
+        <h3>3. Grow Your Data Model</h3>
         <p>Ebean needs to "enhance" your entity classes to make them act as database proxies. This can be done dynamically using the Ebean Agent class,
         or statically at compile time using the Ebean Maven plugin.</p>
         <ul>
