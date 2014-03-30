@@ -6,8 +6,71 @@ heading: Lazy and eager fetching
 ---
 <div class="section">
     <div class="page-header">
-        <h2>Sub-section</h2>
-    </div>
-    <p></p>
-    
+        <h2>Autofetch – Automatic Query Tuning</h2>
+        <p>Ebean version 0.9.7 introduced support for Autofetch. This is a mechanism that can automatically tune your queries for optimal performance.</p>
+        <p>Autofetch automatical y modifies your queries – essential y control ing the select() and fetch() clauses to fetch al  the data your application uses but no more. This has the effect of reducing the amount of lazy loading and only fetches properties that are actual y used.</p>
+        <p>Note that Autofetch can now be used with a query that you have explicitly specified some fetch() paths. Autofetch can add additional fetch() paths and tune which properties to fetch per path.</p>
+        <h2>Background</h2>
+        <p>Autofetch is an idea that has come from Ali Ibrahim's work at the University of Texas.  Ali and colleagues developed the idea and are working on a Hibernate implementation of Autofetch.</p>
+        <p>Link: <a href="http://www.cs.utexas.edu/~aibrahim/autofetch/"> http://www.cs.utexas.edu/~aibrahim/autofetch/</a></p>
+        <p>In short, Autofetch is a feature of an ORM where the ORM will automatically tune your queries for optimal performance by using profiling information. The ORM will gather object graph usage (profiling) by the application for queries and then use this information to automatically tune the future queries (specify joins and properties to fetch etc).</p>
+        <p>In my opinion "Autofetch" will have a profound effect on how ORM's will define and execute queries (build object graphs). It provides a means for highly performant object graph traversal in a transparent manor – this is a <i><b>very big deal</b></i> !!!</p>
+        <h2>Autofetch in Ebean</h2>
+        <p>When I first came across "Autofetch" I was immediately sold on the idea. "Autofetch" is not a bolt on feature for Ebean but instead has been built into it's core internals and I see it as a hugely important feature for Ebean.</p>
+        <p>With the "Partial Object" support in Ebean, Autofetch is even sweeter as it automatically takes care of selecting just the properties that the application uses as well as handling the joins. This means you get the performance benefit of partial objects without any work on the part of the developer – which is important as your applications get bigger and more complex.</p>
+        <b>Explicit Control</b>
+        <p>On the query object you can explicitly specify if you want to use autofetch or not.</p>
+{% highlight java %}
+// explicitly turn on Autofetch for this query
+query.setAutofetch(true); 
+{% endhighlight %} 
+
+<b>Implicit Control</b>
+<p>There are a number of properties in ebean.properties which control how autofetch works.</p>
+
+{% highlight properties %}
+# enable autofetch
+ebean.autofetch.querytuning=true
+# enable collection of profiling information
+ebean.autofetch.profiling=true
+# implicit autofetch mode
+# default_off, default_on, default_on_if_empty
+ebean.autofetch.implicitmode=default_on
+# minimum amount of profiling to collect before
+# autofetch will start tuning the query
+ebean.autofetch.profiling.min=1
+# profile every query up to base
+ebean.autofetch.profiling.base=10
+# after base collect profiling on 5% of queries
+ebean.autofetch.profiling.rate=0.05
+{% endhighlight %} 
+
+        <table class="table table-striped">
+            <thead>
+                <tr><th>property</th><th>type/value</th><th>description</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>ebean.autofetch.querytuning</td><td>boolean</td><td>If true enables Autofetch to tune queries</td></tr>
+                <tr><td>ebean.autofetch.profiling</td><td>boolean</td><td>If true enables profiling information to be collected</td></tr>
+                <tr><td>ebean.autofetch.implicitmode</td><td>default_off</td><td>default_on_if_empty means autofetch will only tune the query if neither select() default_on nor fetch() has been explicitly set on the default_on_if_empty query</td></tr>
+                <tr><td>ebean.autofetch.profiling.min</td><td>integer</td><td>The minimum amount of profiled queries to be collected before the automatic query tuning will start to occur</td></tr>
+                <tr><td>ebean.autofetch.profiling.base</td><td>integer</td><td>Will profile every query up to this number and after than will profile based on the profiling.rate (5% of queries etc)</td></tr>
+                <tr><td>ebean.autofetch.profiling.rate</td><td>float</td><td>The percentage of queries that are profiled after the base number has been collected</td></tr>
+            </tbody>
+        </table>
+
+        <b>JMX and Programatic Control of Autofetch</b>
+        <p>You can manage Autofetch at runtime either via JMX or programmatically.</p>
+
+{% highlight java %}// get the 'default' EbeanServer
+EbeanServer server = Ebean.getServer(null);
+AdminAutofetch adminAutofetch = server.getAdminAutofetch();
+adminAutofetch.setQueryTuning(false);
+adminAutofetch.setProfiling(false);
+adminAutofetch.setProfilingRate(0.50f);
+adminAutofetch.clearProfilingInfo();
+adminAutofetch.clearTunedQueryInfo();
+{% endhighlight %} 
+
+        </div>
 </div> <!-- //end section -->

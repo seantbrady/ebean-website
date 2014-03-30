@@ -6,8 +6,407 @@ heading: Complex data relationships
 ---
 <div class="section">
     <div class="page-header">
-        <h2>Sub-section</h2>
-    </div>
-    <p></p>
+        <p>The main goal of "Mapping" is to isolate the application code from the Database Schema.</p>
+        <p>This means that <i>some</i> changes can occur to the schema without breaking the application.</p>
+        <p>The application code can be written without reference to the specific table names, view names and column names. This means that your application can more easily withstand some unforseen changes.</p>
+        
+        <h2>JPA Mapping</h2>
+        <p>Ebean uses the same mapping as per the JPA specification. You can learn and use the same mapping annotations. This is generally a very good part of the specification and I'd expect this part of the specification to mostly stand the test of time.</p>
+        
+        <h2>DDL Generation</h2>
+        <p>Ebean v2.0 introduces support for DDL generation</p>
+        <p>The DDL the is generated is useful for agile development and testing. It is also useful to help get an understanding of the mapping.</p>
+        <p>For simple Databases the DDL generated will be sufficient but for large databases it is not really 'production quality'. For large Databases you will likely use it as a starting point. DBA's will want to add more control over physical aspects of Tables and Indexes (specify tablespaces etc to spread IO across disks, partition large tables, control freespace depending on the etc).</p>
+        
+        <h2>Naming Convention</h2>
+        <p>Ebean has a Naming Convention API to map column names to property names. It also maps entity to table names and can take into account database schema and catalog if required.</p>
+        <p><img src="ebean-userguide-49_1.png"/></p>
+        <p>Refer to: com.avaje.ebean.config.NamingConvention</p>
+        <p>The default UnderscoreNamingConvention converts column names with underscores into normal java camel case property names (e.g. "first_name" maps to "firstName").</p>
+        <p>You can also use the MatchingNamingConvention or implement your own.</p>
+        
+        <h2>Example Database Design</h2>
+        <p>The following is a database design with some tables. It is a fairly typical Orders, Customers, Products design that I will use to il ustrate the Mapping.</p>
+
+        <h2>Mapping Annotations</h2>
+        <h2>Basics</h2>
+        
+        <b>@Entity</b>
+        <p>This simply marks an Entity Bean. Ebean has the same restrictions as per the JPA spec with the entity beans requiring a default constructor and with properties following the java beans conventions (with getter and setter names).</p>
+        
+        <b>@Table</b>
+        <p>Here you can specify the table name that the entity bean will use. More specifical y this is the "base table" as an entity bean could have a number of "secondary" tables as well.</p>
+
+        <b>@Id and @EmbeddedId</b>
+        <p>Use one of these to mark the property that is the id property. You should use @Id if the id property is a simple scalar type (like Integer, String etc) and you should use @EmbeddedId if the id type is complex (an embedded bean).</p>
+        
+        <b>@Column</b>
+        <p>Use this if the naming convention does not match the bean property name to the database column or if you need to use quoted identifiers. Otherwise it is not required.</p>
     
+        <b>@Lob</b>
+        <p>This marks a property that is mapped to a Clob/Blob/Longvarchar or Longvarbinary.</p>
+    
+        <b>@Transient</b>
+        <p>This marks a property that is not persistent.</p>
+
+        <h2>Relationships</h2>
+        <b>Database Design and Normalisation</b>
+        <p>If you are familiar with Database design and normalisation then I believe the relationships will become clear fairly quickly. If you are not familiar then I'd recommend you take a look at these topics (a quick trip to wikipedia) as I believe they will help you a lot in this area of ORM mapping.</p>
+
+        <b>DB Foreign Keys and ORM Relationships</b>
+        <p>Assuming your DB has foreign keys and has been well designed then the ORM mapping should follow quite naturally. If you DB has a more "interesting" design then the ORM mapping can be a lot more painful with more compromises.</p>
+
+        <b>One-to-Many relationship</b>
+        <p>This is probably the most common relationship so we will start with a One to Many relationship. The @OneToMany and the @ManyToOne represent the two ends of a relationship. This relationship typical y maps  directly to a Database Foreign Key constraint...</p>
+
+        <b>Database Foreign Key constraint</b>
+        <p>A typical database design is ful  of "One to Many/Many to One" relationships implemented using a Foreign Key constraint. A foreign key constraint has an "imported" side and an "exported" side.</p>
+
+        <p><i>"A Customer has many Orders"</i></p>
+        <p><i>"An Order belongs to a Customer"</i></p>
+        <p><i>The customer table "exports" its primary key to the order table</i></p>
+        <p><i>The order table "imports/references" the customer table's primary key.</i></p>
+        <p>A Foreign Key constraint can be viewed from the exported side (customer table) or the imported side (order table).</p>
+        <p>... @OneToMany and @ManyToOne map directly to this.</p>
+        <b>The Customer entity bean...</b> 
+
+{% highlight java %}...
+@Entity
+@Table(name="or_customer")
+public class Customer {
+    ...
+    @OneToMany
+    List<Order> orders;
+...
+{% endhighlight %}
+
+        <p>The Order entity bean...</p>
+    
+{% highlight java %}...
+@Entity
+@Table(name="or_order")
+public class Order {
+    ...
+    @ManyToOne
+    Customer customer;
+{% endhighlight %} 
+
+        <p>Because the @OneToMany and @ManyToOne are both mapped this is a "Bidirectional" relationship. You can navigate the object graph in either direction.</p>
+
+        <b>Unidirectional Relationships</b>
+        <p>To turn a Bidirectional relationship into a Unidirectional relationship you need to either remove the @OneToMany (Customer.orders property) or the @ManyToOne (Order.customer property).</p>
+
+        <b>Removing a OneToMany  - no problem</b>
+        <p>eg. Remove List&lt;Order&gt; from Customer</p>
+        <p>You can generally remove the OneToMany side of a relationship without any major issues. The issue being that you can not navigate the object graph in that direction.</p>
+        <p>Why remove a OneToMany? Sometimes the OneToMany side is not useful to the application or even dangerous if used. For example on Product there could be a List&lt;OrderDetail&gt; but that could be considered useless or even dangerous if it was navigated (and al  order details for a product where lazy loaded).</p>
+
+        <b>Removing a ManyToOne  - watch those inserts...</b>
+        <p>eg. Remove Customer from Order</p>
+        <p>If you remove a ManyToOne this effects how a bean is saved (specifically the insert). The reason is because it is the ManyToOne (importing) side of the relationship that holds the foreign key column (e.g. or_order table holds the customer_id foreign key column).</p>
+        <p><b>Q: </b>If the customer property is removed from the Order object how would you specify which customer placed an order when you create a new order?</p>
+        <p>In Database speak this translates to ... when inserting an order how is the customer_id column populated?</p>
+        <p><b>A: </b>You have to use cascading save on the customer.orders and save the customer. Sounds like a pain... and it would be in this case... lets look at a more realistic case where you want to remove a ManyToOne...</p> 
+        <p>eg. Remove Order from OrderDetail</p>
+        <p>Lets say you remove the Order property from the OrderDetail bean. Now lets say you want to write some code to add a OrderDetail to an Order (insert). How do you specify which Order it should go to?</p>
+        
+        <b>"Turn on" cascade save on the @OneToMany side</b>
+        
+{% highlight java %}@Entity
+@Table(name="or_order")
+public class Order {
+    ...
+// must cascade the save
+    @OneToMany(cascade=CascadeType.ALL)
+    List<OrderDetail> details;
+{% endhighlight %} 
+
+        <b>And save the order... which cascade saves the details</b>
+
+{% highlight java %}
+// create or fetch the order
+Order order = ...
+List<OrderDetail> details = new ArrayList<OrderDetail>();
+OrderDetail orderDetail = ...
+details.add(orderDetail);
+// set the new details...
+order.setDetails(details);
+// save the order... which cascade saves
+// the order details...
+Ebean.save(order);
+{% endhighlight %} 
+
+        <p>So when the order is saved, because the @OneToMany relationship has cascade.ALL the save is cascaded to al  the order details.</p>
+        <p>Note that you can update OrderDetails individually (without relying on cascade save) but to insert a new OrderDetail we are relying on the cascading save.</p>
+        <p>Removing a ManyToOne typical y reflects a strong "ownership" relationship.  The Order "owns" the OrderDetails, they are persisted as one via cascade save.</p>
+
+        <b>Managed Relationships = @OneToMany + cascade save</b>
+        <p>If cascade save is on a @OneToMany when the save is cascaded down from the 'master' to the 'details' Ebean will 'manage' the relationship.</p>
+        <p>For example, with the Order - OrderDetails relationship when you save the order Ebean will get the order id and make sure it is 'set' on all the order details. Ebean does this for both Bidirectional relationships and Unidirectional relationships.</p>
+        <p>What this means is that if your OrderDetails has an @ManyToOne Order property (its bidirectional) you do not need to set the order against each orderDetail when you use cascade save. Ebean will automatical y set the 'master' order to each of the details when you save the Order and that cascades down to the details.</p>
+
+        <b>@OneToMany Notes</b>
+        <p>When you assign a @OneToMany you typical y specify a mappedBy attribute. This is for Bi-directional relationships and in this case the "join" information is read from the other side of the relationship (meaning you don't specify any @JoinColumn etc on this side).</p>
+        <p>If you don't have a mappedBy attribute (there is no matching property on the other related bean) then this is a Unidirectional relationship. In this case you can specify a @JoinColumn if you wish to override the join column information from the default).</p>
+
+{% highlight java %}
+@Entity
+@Table(name="s_user")
+public class User implements Serializable {
+// unidirectional …
+// … can explicitly specify the join column if needed
+@OneToMany
+@JoinColumn(name="pref_id")
+List<Preference> preferences;
+// bi-directional
+// … join information always read from the other side
+@OneToMany(mappedBy="userLogged")
+List<Bug> loggedBugs;
+{% endhighlight %} 
+
+        <b>One-to-One relationship</b>
+        <p>A One-to-One relationship is exactly the same as a One-to-Many relationship except that the many side is limited to a maximum of one.</p>
+        <p>That means that one of the @OneToOne sides operates just like a @ManyToOne (the imported side with the foreign key column) and the other @OneToOne operates just like a @OneToMany (exported side).</p>
+        <p>So you put the mappedBy on the 'exported side' – as if it was a @OneToMany.</p>
+        <p>From a Database perspective a One to One relationship is implemented with a foreign key constraint (like one to many) and adding a unique constraint on the foreign key column. This has the effect of limiting the "many" side to a maximum of one (has to be unique).</p>
+
+        <b>Many-to-Many relationship</b>
+        <p>You are probably aware that there are no Many to Many relationships in a physical database design. These are implemented with an intersection table and two One to Many relationships.</p>
+
+        <p>Lets look at an example...</p>
+        <p><i>A User can have many Roles</i></p>
+        <p><i>A Role can be assigned to many Users</i></p>
+
+        <p><img src="ebean-userguide-56_1.png"/></p>
+
+        <p><i>A Many to Many between user and role </i></p>
+        <p>In the database diagram above there is an intersection table cal ed s_user_role. This represents a logical many to many relationship between user and role.</p>
+        <p>Q: When is a Many to Many better represented as two One to Many relationships?</p>
+        <p>A: If there is ever an additional column in the intersection table then you should consider changing this from a Many to Many to two One to Many's and including the intersection table in the model.</p>
+        <p>One way to think of this is that each @ManyToMany operates just like it was a @OneToMany. The relationship must be "managed" meaning Ebean must take care of inserting into and deleting from the intersection table.</p>
+        <p>The way this works is that any additions or removables from the many list/set/map are noted. These become inserts into and deletes from the intersection table.</p>
+
+{% highlight java %}
+@Entity
+@Table(name="s_user")
+public class User implements Serializable {
+...
+    @ManyToMany(cascade=CascadeType.ALL)
+    List<Role> roles;
+{% endhighlight %}
+
+{% highlight java %}
+@Entity
+@Table(name="s_role")
+public class Role {
+...
+    @ManyToMany(cascade=CascadeType.ALL)
+    List<User> users;
+{% endhighlight %} 
+
+        <p>The intersection table name and foreign key columns can default or be specified by @JoinTable etc.</p>
+        <p>The following code shows a new role added to a user.</p>
+    
+{% highlight java %}
+User user = Ebean.find(User.class, 1);
+List<Role> roles = user.getRoles();
+Role role = Ebean.find(Role.class, 27);
+// adding a role to the list...this is remembered and will
+// result in an insert into the intersection table
+// when save cascades...
+roles.add(role);
+// save cascades to roles... and in this case
+// results in an insert into the intersection table
+Ebean.save(user);
+{% endhighlight %} 
+
+        <p>Note that if a role was removed from the list this would result in an appropriate delete from the intersection table.</p>
+
+        <h2>@Formula</h2>
+        <p>Formula can be used to get read only values using SQL Literals, SQL Expressions and SQL Functions.</p>
+        <p>With a Formula the <i><b>${ta}</b></i> is a special token to represent the table alias. The table alias is dynamical y determined by Ebean and you can put the ${ta} in the select or join attributes.</p>
+        
+        <b>A SQL Expression</b>
+        <p>Example: The caseForm field using a SQL case expression</p>
+
+{% highlight java %}...
+@Entity
+@Table(name="s_user")
+public class User {
+    @Id
+    Integer id;     
+    
+    @Formula(select="(case when ${ta}.id > 4 then 'T' else 'F' end)")
+    boolean caseForm;
+    ...
+{% endhighlight %} 
+
+        <p>Note the <b>${ta}</b> in place of the table alias</p>
+        <p>Note in this deployment 'T' and 'F' are mapped to boolean values.</p>
+
+{% highlight java %}
+A SQL Function
+@Formula(select="(select count(*) from f_topic _b where _b.user_id = 
+${ta}.id)")
+int countAssiged;
+{% endhighlight %} 
+
+        <p>The formula properties can be used as normal properties. This includes in query select and where expressions.</p>
+
+{% highlight java %}
+// include the countAssigned property
+Query<User> query = Ebean.createQuery(User.class);
+query.select("id, name, countAssiged");
+query.fetch("topics");
+List<User> list = query.findList();
+{% endhighlight %} 
+
+        <p>The SQL generated from the query above is:</p>
+
+{% highlight xml %}
+<sql summary='[app.data.User]'>
+select u.id, u.name, 
+(select count(*) from f_topic _b where _b.user_id = u.id)
+from s_user u
+</sql>
+{% endhighlight %} 
+
+        <p>Note the <i><b>"u"</b></i> in the sql has replaced the ${ta} [table alias placeholder] specified in the select attribute of the formula.</p>
+        <p><i><b>It is also worth noting that this is potentially not great SQL!!!</b></i> You should check SQL in this form (get the explain plan for the query – get your DBA to review the sql etc) but there is a good chance the sub query (select count(*) ... _b.user_id = u.id) will effectively execute for each row returned. If that is the case the query above can quickly become expensive and you may find you have an unhappy DBA.</p>
+        <p>The above can be re-written to use a view (if one exists). The benefit is that we can use a join rather than a subquery which can perform much better from a database perspective.</p>
+
+{% highlight sql %}
+// VIEW: vw_topic_aggr
+// Let's say there is a view base on this SQL.
+// It is typically more performant to JOIN
+// to a view rather than use a subquery
+create view vw_topic_aggr as
+select user_id, max(id) as topic_max, count(*) as topic_count
+from f_topic
+group by user_id
+{% endhighlight %} 
+
+        <p>And use the <b>join</b> attribute of @Formula</p> 
+
+{% highlight java %}
+@Formula(
+  select="_b${ta}.topic_count",
+  join="join vw_topic_aggr
+ as _b${ta} on _b${ta}.user_id = id")
+  int countWithJoin;
+{% endhighlight %} 
+
+        <p>Now, if the view does not exist we can do something similar ...</p>
+        <p>In this next @Formula the join attribute contains the select effectively replacing the vw_topic_aggr view with (select user_id, max(id) as topic_max, count(*) as topic_count from f_topic group by user_id).</p>
+
+{% highlight java %}
+@Formula(
+  select="_b${ta}.topic_count",
+  join="join (select user_id, max(id) as topic_max, count(*) as 
+topic_count from f_topic group by user_id) as _b${ta} on _b$
+{ta}.user_id = id")
+int countWithJoin;
+Query<User> query = Ebean.createQuery(User.class);
+query.select("id, name, countWithJoin");
+List<User> list = query.findList();
+{% endhighlight %} 
+
+        <p>Results in the following SQL: - <i>will generally perform better than the subquery</i></p>
+
+{% highlight xml %}
+<sql summary='[app.data.User]'>
+select u.id, u.name, _bu.topic_count
+from s_user u
+join (select user_id, max(id) as topic_max, count(*) as topic_count
+from f_topic group by user_id) as _bu on _bu.user_id = id
+</sql>
+{% endhighlight %} 
+
+        <p>It is also worth noting that the formula fields can be used in where expressions.</p>
+
+        <p>Example: where countWithJoin &gt; 1</p>
+        <p><b>Query&lt;User&gt; query = Ebean.</b></p>
+
+{% highlight java %}
+createQuery(User.class);
+query.select("id, name, countWithJoin");
+// using the formula field in the where
+query.where().gt("countWithJoin", 1);
+List<User> list = query.findList();
+{% endhighlight %} 
+
+        <p>Resulting SQL:</p>
+
+{% highlight xml %}<sql summary='[app.data.User]'>
+select u.id, u.name, _bu.topic_count
+from s_user u
+join (select user_id, max(id) as topic_max, count(*) as topic_count
+from f_topic group by user_id) as _bu on _bu.user_id = id
+where _bu.topic_count > ?
+</sql>
+{% endhighlight %} 
+
+        <h2>@EnumMapping</h2> 
+        <p>This is an Ebean specific annotation (not part of JPA) for mapping Enum's to database values. The reason it exists is that IMO the JPA approach for mapping of Enums is highly dangerous (in the case of Ordinal mapping) or not very practical (in the case of String mapping).</p>
+        <p>Lets take the example of this Enumeration:</p>
+
+{% highlight java %}public enum UserStatus {
+ACTIVE, INACTIVE, NEW
+}
+{% endhighlight %} 
+
+        <b>Enum Ordinal Mapping is Dangerous</b>
+        <p>In my opinion JPA Ordinal Mapping for Enum's is very dangerous (So dangerous I highly recommend avoiding it). The reason is because the ordinal values for Enum depends on the order in which they appear.</p>
+
+{% highlight java %}
+public class TestStatus {
+    public static void main(String[] args) {
+        int ord0 = UserStatus.ACTIVE.ordinal();
+        int ord1 = UserStatus.INACTIVE.ordinal();
+        int ord2 = UserStatus.NEW.ordinal();
+        // 0, 1, 2
+        System.out.println("ord 0:"+ord0+" 1:"+ord1+" 2:"+ord2);
+        String str0 = UserStatus.ACTIVE.name();
+        String str1 = UserStatus.INACTIVE.name();
+        String str2 = UserStatus.NEW.name();
+        // "ACTIVE", "INACTIVE", "NEW"
+        System.out.println("str 0:"+str0+" 1:"+str1+" 2:"+str2);
+    }
+}
+OUTPUT:
+ord 0:0 1:1 2:2
+str 0:ACTIVE 1:INACTIVE 2:NEW
+{% endhighlight %} 
+
+        <p>The problem is that if you change the order of the Enum elements such as in this example (DELETED is now first with Ordinal value of 0) ... </p>
+
+{% highlight java %}
+public enum UserStatus {
+    DELETED, ACTIVE, INACTIVE, NEW
+}
+{% endhighlight %}
+
+        <p>With the above code the Ordinal values for ACTIVE, INACTIVE and NEW have all changed. This is a very subtle change and now every status existing in the database will be incorrectly represented in the application. Hopefully this issue would be picked up quickly but there could be situations where this subtle data issue is not picked up before a real disaster has occured.</p>
+
+        <b>Enum String mapping is limited</b>
+        <p>It is more likely that your DBA would prefer to save space by mapping this to a VARCHAR(1) column and use "A", "I", "N" and "D" as codes to represent ACTIVE, INACTIVE, NEW and DELETED. </p>
+        <p>The issue with the String mapping is that more frequently than not the names of the Enumeration elements will have to be comprimised to short less-meaningful names to map into DB values or your DBA will be unhappy with long wasteful values.</p>
+
+{% highlight java %}
+@EnumValue
+public enum UserStatus {
+    @EnumValue("D")
+    DELETED, 
+    @EnumValue("A")
+    ACTIVE, 
+    @EnumValue("I")
+    INACTIVE, 
+    @EnumValue("N")
+    NEW
+}
+{% endhighlight %} 
+
+        <p>With EnumValue (Ebean specific annotation) you explicitly specify the value map the entry to. This Annotation has been logged with the Eclipselink project in the hope it makes it's way into the JPA spec.
+        </p>
+    </div>
 </div> <!-- //end section -->

@@ -6,8 +6,247 @@ heading: Database transactions
 ---
 <div class="section">
     <div class="page-header">
-        <h2>Sub-section</h2>
+        <p>If no Transactions are demarcated Ebean will automatical y create and commit a transaction as required.</p>
+{% highlight java %}
+Order order = ......
+// 'Implicit' transaction created and committed
+Ebean.save(order);
+{% endhighlight %} 
+        <p>Transactions can be demarcated with via @Transactional annotation (requires Enhancement to be used) and serveral programmatic approaches – TxRunnable/ TxCallable and beginTransaction() etc.</p>
+        <p>Some examples are:</p>
+        <b>@Transactional example</b>
+{% highlight java %}...
+public class MyService {
+    @Transactional
+    public void runFirst() throws IOException {
+        // do multiple things in a single transaction
+        User u1 = Ebean.find(User.class, 1);
+        Customer cust = Ebean.find(Customer.class, 27);
+        Ebean.save(cust);
+    }
+}
+{% endhighlight %} 
+
+        <b>Programatic TxRunnable Example</b>
+
+{% highlight java %}
+public void myMethod() {
+    ...
+    System.out.println(" Some code in myMethod...");
+    // run in Transactional scope... 
+    Ebean.execute(new TxRunnable() {
+        public void run() {
+            // code running in "REQUIRED" transactional scope
+            User user = Ebean.find(User.class, 1);
+            ...
+            Ebean.save(user);...
+        }
+    });
+    System.out.println(" more code in myMethod...");
+}
+{% endhighlight %} 
+
+        <b>Programatic beginTransaction() example</b>
+{% highlight java %}
+Order order = ...
+Customer customer = order.getCustomer();
+// 'Explicit' transaction
+Ebean.beginTransaction();
+try {
+    ...
+    Ebean.save(customer);
+    Ebean.save(order);
+    Ebean.commitTransaction();
+} finally {
+    Ebean.endTransaction();
+}
+{% endhighlight %} 
+        <p>With a Transaction can also control JDBC batching (batch size, flushing), turn on/off transaction logging, turn on/off cascading of save &amp; delete.</p>
+        <h2>Transaction Logging</h2> 
+        <p>Ebean also has transaction logging built in (SQL, bind variables etc).</p>
+        <p>The transaction logs are useful to follow the behaviour of JDBC batching, cascading behaviour and identify when lots of lazy loading is being invoked.</p>
+        <p>Also, if you are developing relatively complex batch processing you should note that you can <i><b>add your own comments</b> so that they <b>appear in the transaction log</b></i>. This makes it easier to relate the statements in the transaction log back to your application code.</p>
+{% highlight java %}...
+try {
+    Ebean.execute(new TxRunnable() {
+        public void run() {
+          // this comment appears in the transaction log
+          Ebean.currentTransaction().log("-- saving holder first time");
+          Ebean.save(holder);
+          ...
+{% endhighlight %} 
+        <p>You can control what is logged and the level of detail via ebean.properties.</p>
+{% highlight properties %}
+## Use java util logging to log transaction details
+#ebean.loggingToJavaLogger=true
+## General logging level: (none, explicit, all)
+ebean.logging=all
+## location of transaction logs
+ebean.logging.directory=logs
+#ebean.logging.directory=${catalina.base}/logs/trans
+## Specific Log levels (none, summary, binding, sql)
+ebean.logging.iud=sql
+ebean.logging.query=sql
+ebean.logging.sqlquery=sql
+{% endhighlight %} 
+        <p>In your early stages of using Ebean you should find where the transaction logs are going so that you can see exactly what Ebean is doing.</p>
+        <p>When Ebean starts it will output to the log the directory where the transaction logs will get written to.</p>
+{% highlight text %}
+...
+INFO: Entities enhanced[0] subclassed[38]
+INFO: Transaction logs in: C:/apps/tomcat6/logs/trans
+...
+{% endhighlight %} 
+
+        <h2>Implicit Transactions</h2>
+        <p>If you do execute a query or use save() or delete() without a transaction (without a @Transaction annotation, TxRunnable , beginTransaction() etc) then Ebean will create an "implicit" transaction.</p>
+        <p>Ebean first checks to see if there is a current transaction, and if there is not one it creates one, performs the action (query, save() delete() etc) and then commits the transaction automatically at the end (or performs a rollback if there was an error).</p>
+
+{% highlight java %}
+// execute a query will create an implicit
+// transaction if there is no current Transaction
+List<User> users = 
+    Ebean.find(User.class)
+        .fetch("customer")
+        .where().eq("state", UserState.ACTIVE)
+        .findList();
+// execute a save will create an implicit
+// transaction if there is no current Transaction
+Ebean.save(user);
+{% endhighlight %}
+
+        <p>Following are ways to explicitly demarcate your transactions via @Transactional annotation and various programmatic approaches (TxRunnable etc).</p>
+        <h2>@Transactional annotation</h2>
+        <p>The Transaction annotation is only usable if you use "Enhancement" (via the IDE Plugin, ANT task or javaagent).</p>
+        <p>The transformer (enhancement code) that enhances Entity beans will also by default look for any class that has a @Transactional annotation and enhances those classes/methods adding in the appropriate transactional scope management (create a transaction if required, commit or rollback as necessary, suspend and resume an existing transaction if required etc).</p>
+        <p>The annotation follows the Spring approach of supporting specific transaction isolation levels,  explicit rollback/no rollback of exceptions, and read only indicator. These are currently missing from the standard EJB annotation.</p>
+        <b>EJB: No Rollback of Checked Exceptions</b>
+        <p>It seems counter-intuitive but in EJB (and Spring decided follow the EJB approach) a checked exception does not actually cause a rollback to occur.  So if you had a method that is Transactional and throws a checked exception (not a RuntimeException)... then it <i><b>would NOT rollback</b></i> if that checked exception was thrown.</p>
+        <b>Ebean: configurable ... default is to rollback on any Exception</b>
+        <p>With Ebean this is not the default behaviour and instead Ebean by default will rollback on any Exception (Checked or Runtime). You can make Ebean follow the EJB behaviour by setting ebean.transaction.rollbackOnChecked=false.</p>
+
+{% highlight properties %}
+## Ebean default is rollbackOnChecked=true
+## set this to false to get EJB behaviour
+ebean.transaction.rollbackOnChecked=false
+{% endhighlight %}
+
+        <p>Put the @Transactional annotation on a method. Via Enhancement (IDE Plugin, javaagent or ANT task) Ebean enhances the method adding the transaction management around the method invocation.</p> 
+
+{% highlight java %}
+...
+public class MyService {
+@Transactional
+    public void runFirst() throws IOException {
+        System.out.println("runFirst");
+        User u1 = Ebean.find(User.class, 1);
+        runInTrans();
+    }
+
+    @Transactional(type = TxType.REQUIRES_NEW)
+    public void runInTrans() throws IOException {
+        System.out.println("runInTrans ...");
+        User u1 = Ebean.find(User.class, 1);
+        ...
+{% endhighlight %} 
+
+        <p>This supports nested transactions (as does TxRunnable and TxCallable) and makes it easy to demarcate transactions.</p>
+        <p>You can also put @Transactional on interface methods, and classes implementing the interface will inherit the transactional definitions from the interface.</p>
+        <p>Note that the precedence of reading specific @Transactional attributes is that it first uses the annotation attributes from the local method (if there is one), if not then it tries the local class level (if there is one), then the interface method (if there is one), then the interface class level (if there is one).</p>
+        <p><i><b>BUG: If you are using the eclipse IDE enhancer plugin, then you should  note there is a bug. </b></i></p>
+        <p><i><b>If you change the @Transactional annotation on an interface, this  change is not reflected in the implementation classes until they are  saved/compiled. Changing the interface will not necessarily force a  save/comile of all the classes that implement that interface. </b></i></p>
+        <p><i><b>The workaround for this is that after you change a @Transactional  annotation on an interface to make sure all implementation classes of  that interface are saved/compiled perform a build all.</b></i></p>
+
+        <h2>Programatic: TxRunnable and TxCallable</h2> 
+        <p>You can get the same type of functionality as @Transactional programmatically via the TxRunnable and TxCallable.</p>
+
+{% highlight java %}
+public void myMethod() {
+    ...
+    System.out.println(" Some code in myMethod...");
+    // run in Transactional scope... 
+    Ebean.execute(new TxRunnable() {
+        public void run() {
+            // code running in "REQUIRED" transactional scope
+            // ... as "REQUIRED" is the default TxType
+            System.out.println(Ebean.currentTransaction());
+            // find stuff...
+            User user = Ebean.find(User.class, 1);
+            ...
+            // save and delete stuff...
+            Ebean.save(user);
+            Ebean.delete(order);
+            ...
+        }
+    });
+    System.out.println(" more code in myMethod...");
+}
+{% endhighlight %} 
+
+<p>You can specify a TxScope with options such as isolation level and rollback / noRollback for specific Exception types.</p>
+
+{% highlight java %}
+TxScope txScope = TxScope
+    .requiresNew()
+    .setIsolation(TxIsolation.SERIALIZABLE)
+    .setNoRollbackFor(IOException.class);
+Ebean.execute(txScope, new TxRunnable() {
+    public void run() {
+        ...
+{% endhighlight %} 
+
+        <p>You can use a mixture of @Transaction and TxRunnable / TxCallable with nesting (transactional methods calling other transactional methods etc).  They handle the suspending and resuming of nested transactions for you.</p>
+        <p>TxType has values REQUIRED (the default), REQUIRES_NEW, MANDATORY, SUPPORTS, NOT_SUPPORTS, NEVER.  These are an exact match of the EJB TransactionAttributeTypes.</p>
+
+        <h2>Programatic: beginTransaction()</h2>
+        <p>You can also write transaction demarcation code in a more "traditional" way using a try finally block.</p>
+
+{% highlight java %}
+Ebean.beginTransaction();
+try {
+    User u = Ebean.find(User.class, 1);
+    ...
+    Ebean.commitTransaction();
+} finally {
+    Ebean.endTransaction();
+}
+{% endhighlight %} 
+
+        <p>The code above will generally use a ThreadLocal to hold the Transaction to begin, commit and end (end will perform a rollback if required). This makes it easy to use but the limitation is that you can only have one active transaction per EbeanServer (The above code is using Ebean (rather than EbeanServer) so it is a transaction against the <i>"default" </i>EbeanServer).</p>
+
+        <h2>Programmatic: createTransaction()</h2>
+        <p><i>With al  the previous transaction approaches Ebean helps manage the transaction. The limitation this imposes is that you can only have one active transaction per EbeanServer  per Thread.</i></p>
+        <p><i>You can have "nested" transactions when you use REQUIRES_NEW. The "outer" transaction is suspended – the method is run with its NEW transaction and then the "outer" transaction is resumed. With "nested" transactions you can only use 1 transaction at a time – there is only 1 active transaction at any given moment.</i></p>
+        <p>There is extra API on the EbeanServer for using Transactions more explicitly. These transactions are created and not managed by Ebean – so you can have any number of them but you need to manage them yourself (make sure you commit or rollback).</p>
+        <p>In practice the easiest way to do this is to use a try finally block and have transaction.end() in the finally block. The transaction.end() will perform a rollback but only if the transaction has not already been committed.</p>
+
+{% highlight java %}
+// explicit transaction API is on EbeanServer
+// get the default server...
+EbeanServer server = Ebean.getServer(null);
+// create a transaction not "managed" by Ebean
+Transaction transaction = server.createTransaction();
+try {
+    Query<User> query = ...;
+    // query using explicit transaction
+    server.findList(query, transaction);
+    User user = ...;
+    // save using explicit transaction
+    server.save(user, transaction);
+    // delete using explicit transaction
+    server.delete(order, transaction);
+    transaction.commit();
+} finally {
+    // rollback if required
+    transaction.end();
+}
+{% endhighlight %} 
+
+        <p>Using your own explicit transactions like the code above means that you are not restricted to one transaction per EbeanServer per Thread, but it does mean you need to manage the transaction making sure you commit or rollback – otherwise the transaction may be lost resulting in a connection pool leak.</p>
+
+        <h2>12.7: Spring Transactions</h2>
+        
+        <p>The ebean-spring module includes integration into Spring transaction managers.</p>
+        <p>This means that you can use a Spring Transaction Manager to control the transactions and Ebean will use those transactions. Ebean registers with Spring's TransactionSynchronizationManager and is notified off commits and rollbacks – this enables Ebean to automatical y manage its server caches and invoke listeners etc so there are no limitations in using the Spring TransactionManager with Ebean.</p>
     </div>
-    <p></p>
-    
 </div> <!-- //end section -->

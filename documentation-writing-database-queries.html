@@ -6,6 +6,58 @@ heading: Writing database queries
 ---
 <div class="section">
     <div class="page-header">
+        <p>Some query examples</p>
+{% highlight java %}
+// find a customer by their id
+Customer customer = Ebean.find(Customer.class, 4);
+// find a list...
+List<Customer> customers = 
+Ebean.find(Customer.class)
+.where().like("name", "Rob%")
+.orderBy("name desc")
+.findList();
+{% endhighlight %} 
+<p>You can optionally use select() and fetch() to specify only the properties you want to fetch. This returns "partially" populated beans. This is an important feature to help with the performance of your queries.</p>
+{% highlight java %}
+// with select() and fetch() you can specify
+// only the properties you want to fetch.
+// ... returning "Partially" populated objects
+List<Order> orders =
+Ebean.find(Order.class)
+    .select("status, shipDate, orderDate")
+    .fetch("customer", "name")
+    .where()
+    .eq("status", Status.ACTIVE)
+    .like("customer.name", "Rob%")
+    .orderBy("customer.name desc");
+    .findList();
+{% endhighlight %} 
+<p>A query using the query language</p>
+{% highlight java %}
+String q = "find order fetch customer fetch details where id=:id";
+Order order = Ebean.createQuery(Order.class,q) 
+    .setParameter("id", 1)
+    .findUnique();
+{% endhighlight %} 
+<p>The previous examples used a "fluid" API style where the methods are all chained together. You can equaly choose a more traditional style, where you create a query <i>via Ebean.createQuery() or Ebean.find(Class beanType), and then</i> set various query properties and finally using <i>query.findUnique() query.findList() query.findSet() </i>or <i>query.findMap()</i> to return the result.</p>
+{% highlight java %}
+String q = "find order fetch customer fetch details where id=:id";
+
+// using non-fluid style...
+Query<Order> query = Ebean.createQuery(Order.class,q);
+query.setParameter("id", 1);
+Order order = query.findUnique();
+
+// using non-fluid style...
+Query<Order> query = Ebean.createQuery(Order.class);
+query.select("status, shipDate, orderDate");
+query.fetch("customer", "name");
+query.where().eq("status", Status.ACTIVE)
+.like("customer.name", "Rob%");
+query.orderBy("customer.name desc");
+List<Order> orders = query.findList();
+{% endhighlight %}
+
         <h2>Sub-section</h2>
     </div>
     <p></p>

@@ -6,6 +6,24 @@ heading: Writing an entity class
 ---
 <div class="section">
     <div class="page-header">
+        <p>An entity class is a proxy for a database table. Simply create a POJO and annotate with @Entity.  A primary key column can be annotated by @Id.</p>
+{% highlight java %}
+import javax.persistence.Entity;
+import javax.persistence.Id;
+
+@Entity
+public class Customer {
+
+    @Id
+    private Long id;
+
+    private String firstName;
+
+    private String lastName;
+
+    // Getters and setters...
+}
+{% endhighlight %} 
         <h2>Sub-section</h2>
     </div>
     <p></p>
